@@ -1,0 +1,11 @@
+Coloque aqui os certificados em formato PEM / Put your PEM files here:
+
+  ca.pem               -> certificado CA do broker (modo TLS)
+  AmazonRootCA1.pem    -> AWS IoT Core
+  device.crt           -> certificado do dispositivo (AWS)
+  private.key          -> chave privada do dispositivo (AWS)
+
+Depois envie para o LittleFS / Then upload to LittleFS:
+  pio run -t uploadfs
+
+NUNCA suba private.key para o GitHub (veja o .gitignore).

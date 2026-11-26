@@ -1,70 +1,54 @@
 /**
  * @file 02_MQTTBasico.ino
- * @brief ESP32Connectivity — Exemplo 2: WiFi + MQTT com callbacks.
+ * @brief ConectividadeESP32 — Exemplo 2: WiFi + MQTT com callbacks.
  *
- * @details
- * Conecta ao broker MQTT configurado em secrets.h e demonstra:
- * - Publicação via índice de tópico.
- * - Recebimento de mensagens via callback.
- * - Verificação de estado sem bloquear o loop.
+ * Usa o broker público test.mosquitto.org (porta 1883, sem criptografia).
+ * Teste no PC:
+ *   mosquitto_sub -h test.mosquitto.org -t "aula/esp32/#" -v
+ *   mosquitto_pub -h test.mosquitto.org -t "aula/esp32/comando" -m ligar
  *
  * @author  professorThiago (https://github.com/professorThiago)
  * @license MIT
  */
 
-#include <Arduino.h>
-#include "DebugManager.h"
-#include "ESP32Connectivity.h"
+#include <ConectividadeESP32.h>
+
+const char* TOPICOS_PUB[] = { "aula/esp32/status", "aula/esp32/dados" };
+const char* TOPICOS_REC[] = { "aula/esp32/comando" };
+ConfigTopicos topicos = { TOPICOS_PUB, 2, TOPICOS_REC, 1 };
 
 uint32_t ultimaPublicacao = 0;
 uint32_t contador = 0;
 
-// ── Callbacks de eventos ─────────────────────────────────────
-
-void aoConectarMQTT() {
-    debugInfo(">>> MQTT conectado! Publicando mensagem de presença...");
-}
-
-void aoDesconectarMQTT() {
-    debugErro(">>> MQTT desconectado.");
-}
-
 void aoReceberMensagem(const char* topico, const String& mensagem) {
-    debugInfo(">>> Mensagem recebida!");
-    debugInfo("    Tópico  : " + String(topico));
-    debugInfo("    Payload : " + mensagem);
-
-    // Exemplo de roteamento por tópico
-    if (mensagem == "ligar") {
-        debugInfo("    Ação: ligar dispositivo");
-    } else if (mensagem == "desligar") {
-        debugInfo("    Ação: desligar dispositivo");
-    }
+    debugInfo(">>> " + String(topico) + " = " + mensagem);
+    if (mensagem == "ligar")         debugInfo("    Acao: ligar dispositivo");
+    else if (mensagem == "desligar") debugInfo("    Acao: desligar dispositivo");
 }
-
-// ── Setup e loop ─────────────────────────────────────────────
 
 void setup() {
-    configurarDebug();
+    configurarDebug(DEBUG_INFO);
 
-    conectividade.registrarCallbackMQTTConectado(aoConectarMQTT);
-    conectividade.registrarCallbackMQTTDesconectado(aoDesconectarMQTT);
     conectividade.registrarCallbackMensagem(aoReceberMensagem);
+    conectividade.registrarCallbackMQTTConectado([]() { debugInfo(">>> MQTT conectado!"); });
 
-    conectividade.beginTLS();
+    // Status com Last Will: "online" ao conectar, "offline" se o ESP32 cair
+    conectividade.configurarStatus("aula/esp32/status");
 
-    debugInfo("Setup concluído.\n");
+    conectividade.beginSimples(
+        { "NOME_DA_REDE", "SENHA_DA_REDE" },
+        { "test.mosquitto.org", 1883, "esp32_aula_trocar_id", "", "" },
+        topicos);
 }
 
 void loop() {
     conectividade.update();
 
-    // Publica a cada 10 segundos (apenas se MQTT conectado)
-    if (conectividade.mqttConectado() && millis() - ultimaPublicacao >= 10000) {
+    if (millis() - ultimaPublicacao >= 10000) {
         ultimaPublicacao = millis();
         contador++;
-
-        String payload = "{\"contador\":" + String(contador) + ",\"uptime\":" + String(millis() / 1000) + "}";
-        conectividade.publicar(0, payload.c_str());
+        String payload = "{\"contador\":" + String(contador) +
+                         ",\"uptime\":" + String(millis() / 1000) + "}";
+        conectividade.publicar(1, payload);   // aceita String direto
     }
 }

@@ -1,57 +1,43 @@
 /**
  * @file 01_WiFiBasico.ino
- * @brief ESP32Connectivity — Exemplo 1: Conexão WiFi não-bloqueante.
+ * @brief ConectividadeESP32 — Exemplo 1: WiFi não-bloqueante (sem MQTT).
  *
- * @details
- * Demonstra que o setup() retorna imediatamente mesmo sem WiFi disponível.
- * O `loop()` continua executando normalmente enquanto a conexão acontece
- * em segundo plano via `update()`.
- *
- * Observe no Monitor Serial que o contador continua incrementando
- * mesmo antes do WiFi conectar.
+ * O setup() retorna na hora, mesmo sem WiFi. Observe no Monitor Serial que o
+ * contador continua subindo enquanto a conexão acontece em segundo plano.
  *
  * @author  professorThiago (https://github.com/professorThiago)
  * @license MIT
  */
 
-#include <Arduino.h>
-#include "DebugManager.h"
-#include "ESP32Connectivity.h"
+#include <ConectividadeESP32.h>
 
-uint32_t ultimoLog   = 0;
-uint32_t contador    = 0;
-
-void aoConectarWiFi() {
-    debugInfo(">>> Callback: WiFi conectou! IP = " + WiFi.localIP().toString());
-}
-
-void aoDesconectarWiFi() {
-    debugErro(">>> Callback: WiFi caiu!");
-}
+uint32_t ultimoLog = 0;
+uint32_t contador  = 0;
 
 void setup() {
-    configurarDebug();
+    configurarDebug(DEBUG_INFO);
 
-    // Registra callbacks antes do begin()
-    conectividade.registrarCallbackWiFiConectado(aoConectarWiFi);
-    conectividade.registrarCallbackWiFiDesconectado(aoDesconectarWiFi);
+    conectividade.registrarCallbackWiFiConectado([]() {
+        debugInfo(">>> WiFi conectou! IP = " + WiFi.localIP().toString());
+    });
+    conectividade.registrarCallbackWiFiDesconectado([]() {
+        debugErro(">>> WiFi caiu!");
+    });
 
-    // begin() não bloqueia — setup() retorna imediatamente
-    conectividade.beginTLS();
+    conectividade.beginSomenteWiFi({ "NOME_DA_REDE", "SENHA_DA_REDE" });
+    // Ou use as credenciais salvas pelo portal (exemplo 04):
+    // conectividade.beginSomenteWiFi(WIFI_SALVO);
 
-    debugInfo("setup() concluído. Loop iniciando...\n");
+    debugInfo("setup() concluido. Loop iniciando...");
 }
 
 void loop() {
-    // Avança a máquina de estado — NÃO bloqueia
-    conectividade.update();
+    conectividade.update();   // avança a máquina de estados — não bloqueia
 
-    // O programa principal continua funcionando normalmente
     if (millis() - ultimoLog >= 2000) {
         ultimoLog = millis();
         contador++;
-
-        String estado = conectividade.wifiConectado() ? "CONECTADO" : "aguardando...";
-        debugInfo("[" + String(contador) + "] WiFi: " + estado);
+        debugInfo("[" + String(contador) + "] WiFi: " +
+                  (conectividade.wifiConectado() ? "CONECTADO" : "aguardando..."));
     }
 }

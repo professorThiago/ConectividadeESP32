@@ -1,304 +1,367 @@
 # ConectividadeESP32
 
-Biblioteca Arduino/ESP32 para gerenciamento **não-bloqueante** de WiFi e MQTT, com reconexão automática e fila de mensagens offline.
+Biblioteca para ESP32 que cuida de **WiFi e MQTT sem travar o `loop()`**: reconecta sozinha, guarda as mensagens enquanto está offline e tem um **portal de configuração WiFi** para escolher a rede pelo celular.
 
-> Autor: [professorThiago](https://github.com/professorThiago)  
-> Depende de: [DebugManager](https://github.com/professorThiago/DebugManager) — baixado automaticamente.
-
----
-
-## Por que não-bloqueante?
-
-A abordagem tradicional usa `while()` para aguardar conexão:
-
-```cpp
-// ❌ Bloqueante — trava o setup() por até 15 segundos
-while (WiFi.status() != WL_CONNECTED) { delay(500); }
-```
-
-Esta biblioteca usa **máquinas de estado** processadas no `loop()`:
-
-```cpp
-// ✓ Não-bloqueante — setup() retorna imediatamente
-conectividade.beginSimples(wifi, mqtt, topicos);
-
-void loop() {
-    conectividade.update();   // avança sem travar
-    // sua lógica continua normalmente
-}
-```
+> Autor: [professorThiago](https://github.com/professorThiago) · Licença MIT
+> Depende de [DebugManager](https://github.com/professorThiago/DebugManager) e PubSubClient (baixados automaticamente pelo PlatformIO).
+> 🇺🇸 **English API available** — every function also has an English name. See [English API](#english-api).
 
 ---
 
 ## Funcionalidades
 
-- ✅ WiFi e MQTT não-bloqueantes com reconexão automática.
-- ✅ Três modos de conexão: **SIMPLES**, **TLS** e **AWS IoT Core**.
-- ✅ **Fila offline:** mensagens publicadas sem MQTT são salvas e enviadas ao reconectar.
-- ✅ Sem dependência de `secrets.h` — tudo configurado via structs no `begin()`.
-- ✅ Diagnóstico detalhado: códigos WiFi e MQTT traduzidos com dicas de solução.
-- ✅ Buffer MQTT configurável via `configurarBufferMQTT()`.
+- WiFi e MQTT **não-bloqueantes**, com reconexão automática.
+- Três modos MQTT: **SIMPLES** (1883), **TLS** (8883) e **AWS IoT Core** (mTLS).
+- **Certificados e chaves no LittleFS** — basta passar o caminho do arquivo.
+- **Portal de configuração WiFi** (modo AP + captive portal) com **HTML personalizável**.
+- **Credenciais no Preferences (NVS)**, em namespace próprio — o resto do Preferences fica livre para o seu projeto.
+- **Fila offline** com três políticas.
+- **Status com Last Will** (`online`/`offline` no broker).
+- Diagnóstico em português: códigos de erro do WiFi e do MQTT traduzidos, com dicas.
+- API em **português e inglês**.
 
 ---
 
 ## Instalação
 
+### PlatformIO
+
 ```ini
+[env:esp32dev]
+platform  = espressif32
+board     = esp32dev
+framework = arduino
+board_build.filesystem = littlefs        ; certificados e portal
+
 lib_deps =
-    https://github.com/professorThiago/ESP32Connectivity
+    https://github.com/professorThiago/ConectividadeESP32
 ```
 
-O PlatformIO baixa automaticamente **DebugManager** e **PubSubClient**.
+### Arduino IDE
+
+Instale **PubSubClient** pelo gerenciador e baixe o ZIP desta biblioteca e do **DebugManager** (*Sketch → Incluir Biblioteca → Adicionar .ZIP*). Para enviar arquivos ao LittleFS, use o plugin [arduino-littlefs-upload](https://github.com/earlephilhower/arduino-littlefs-upload).
+
+---
+
+## Início rápido
+
+```cpp
+#include <ConectividadeESP32.h>
+
+const char* pub[] = { "sala/status", "sala/temperatura" };
+const char* rec[] = { "sala/comando" };
+ConfigTopicos topicos = { pub, 2, rec, 1 };
+
+void setup() {
+    configurarDebug(DEBUG_INFO);
+
+    conectividade.registrarCallbackMensagem([](const char* topico, const String& msg) {
+        debugInfo(String(topico) + " = " + msg);
+    });
+
+    conectividade.beginSimples(
+        { "MinhaRede", "minha_senha" },                       // WiFi
+        { "192.168.0.10", 1883, "esp32_sala", "", "" },       // broker, porta, clientId, usuário, senha
+        topicos);
+}
+
+void loop() {
+    conectividade.update();                                   // SEMPRE no loop()
+    // ... sua lógica continua rodando, com ou sem rede
+}
+```
 
 ---
 
 ## Modos de conexão
 
-| Modo | Enum | Quando usar |
-|------|------|-------------|
-| Sem criptografia | `ModoConexao::SIMPLES` | Redes locais confiáveis, testes |
-| TLS | `ModoConexao::TLS` | Brokers públicos (HiveMQ, Mosquitto Cloud, etc.) |
-| AWS IoT Core | `ModoConexao::AWS_IOT` | AWS com certificado de dispositivo (mTLS) |
+```cpp
+// Só WiFi, sem MQTT
+conectividade.beginSomenteWiFi(wifi);
 
-O modo é determinado pela sobrecarga do `begin()` chamada — não há flag booleana ou variável global.
+// MQTT sem criptografia — redes locais
+conectividade.beginSimples(wifi, mqtt, topicos);
+
+// MQTT com TLS — brokers públicos
+conectividade.beginTLS(wifi, mqtt, { "/certs/ca.pem" }, topicos);
+
+// AWS IoT Core — mTLS
+conectividade.beginAWS(wifi,
+    { "xxxx-ats.iot.us-east-1.amazonaws.com", 8883, "meu_thing",
+      "/certs/AmazonRootCA1.pem", "/certs/device.crt", "/certs/private.key" },
+    topicos);
+```
+
+A biblioteca **copia** todos os textos das structs, então você pode passar `String.c_str()` ou variáveis locais. Só os arrays de tópicos precisam ser globais.
 
 ---
 
-## Quick start
+## Certificados no LittleFS
 
-### Modo SIMPLES
+Nos campos de certificado (`ConfigTLS` e `ConfigAWS`) você pode passar:
+
+| Valor | Exemplo | O que acontece |
+|-------|---------|----------------|
+| Caminho no LittleFS | `"/certs/ca.pem"` | O arquivo é lido na hora do `begin()` |
+| Conteúdo PEM | `meuCertCA` (`R"EOF(-----BEGIN...)EOF"`) | Usado direto da flash |
+| Vazio / `nullptr` | `""` | TLS sem verificação (`setInsecure()`) — **só para testes** |
+
+Estrutura do projeto:
+
+```
+meu_projeto/
+├── platformio.ini          ← board_build.filesystem = littlefs
+├── data/
+│   ├── certs/
+│   │   ├── ca.pem
+│   │   ├── device.crt
+│   │   └── private.key     ← NUNCA vai para o GitHub
+│   └── portal/
+│       └── index.html      ← opcional (portal personalizado)
+└── src/
+    └── main.cpp
+```
+
+Envio dos arquivos: `pio run -t uploadfs`.
+
+> Se o seu código já usa o LittleFS (`LittleFS.begin()`), não tem problema: a biblioteca só monta se ainda não estiver montado.
+
+---
+
+## Portal de configuração WiFi
+
+Abre uma rede WiFi própria do ESP32. Ao conectar o celular nela, a página abre sozinha (captive portal) — ou acesse `http://192.168.4.1`. A página lista as redes, você escolhe, digita a senha e salva. As credenciais vão para o Preferences e o ESP32 conecta.
 
 ```cpp
-#include <DebugManager.h>
-#include <ESP32Connectivity.h>
-
-ConfigWiFi wifi = { "MinhaRede", "minha_senha" };
-ConfigMQTT mqtt = { "192.168.1.100", 1883, "esp32_id", "", "" };
-
-const char* pub[] = { "casa/status" };
-const char* rec[] = { "casa/comando" };
-ConfigTopicos topicos = { pub, 1, rec, 1 };
-
 void setup() {
-    configurarDebug(DEBUG_INFO, 4);
-    conectividade.beginSimples(wifi, mqtt, topicos);
+    configurarDebug(DEBUG_INFO);
+
+    // Abre o portal sozinho se a rede salva falhar 3 vezes seguidas
+    conectividade.definirPortalAutomatico(true, "Config-Sala");
+
+    // WIFI_SALVO = usa a rede salva; se não houver, abre o portal
+    conectividade.beginSimples(WIFI_SALVO, mqtt, topicos);
 }
 
 void loop() {
-    conectividade.update();
-    conectividade.publicar(0, "online");
-    delay(5000);
+    conectividade.update();      // também atende o portal
+
+    if (botaoPressionado())
+        conectividade.iniciarPortalConfiguracao("Config-Sala", nullptr, 300);  // fecha após 5 min sem uso
 }
 ```
 
-### Modo TLS
+| Função | Descrição |
+|--------|-----------|
+| `iniciarPortalConfiguracao(nomeAP, senhaAP, timeoutSeg)` | Abre o portal. `nomeAP = nullptr` → `ESP32-XXXX`. `senhaAP` precisa de 8+ caracteres ou `nullptr` (aberta). `timeoutSeg = 0` → não fecha sozinho. |
+| `pararPortalConfiguracao()` | Fecha o portal e volta a conectar na rede salva. |
+| `portalAtivo()` | `true` enquanto o portal está aberto. |
+| `definirPortalAutomatico(ativo, nomeAP, senhaAP, falhas)` | Abre o portal após `falhas` tentativas seguidas sem sucesso. |
+| `definirPastaPortal("/portal")` | Pasta do LittleFS com os arquivos da página. |
+| `registrarCallbackPortalSalvo(cb)` | Chamado com o SSID quando o usuário salva uma rede. |
 
-```cpp
-const char meuCertCA[] PROGMEM = R"EOF(
------BEGIN CERTIFICATE-----
-...certificado CA do broker...
------END CERTIFICATE-----
-)EOF";
+Se a senha digitada estiver errada, o portal volta a abrir depois de 3 falhas.
 
-ConfigMQTT mqtt = { "broker.hivemq.com", 8883, "esp32_id", "usuario", "senha" };
-ConfigTLS  tls  = { meuCertCA };
+### Personalizando a página
 
-conectividade.beginTLS(wifi, mqtt, tls, topicos);
+A página fica em **`data/portal/index.html`** — copie a de [`examples/04_PortalWiFi/data/portal/`](examples/04_PortalWiFi/data/portal/index.html) e mude o que quiser (cores, logo, textos). Outros arquivos da pasta (`style.css`, `logo.png`...) são servidos automaticamente. Se o arquivo não existir no LittleFS, a biblioteca usa uma página embutida igual.
+
+O HTML conversa com o firmware por estas rotas:
+
+| Rota | Resposta |
+|------|----------|
+| `GET /scan` | `{"scanning":false,"networks":[{"ssid":"Casa","rssi":-52,"secure":true,"channel":6}]}` |
+| `GET /scan?refresh=1` | Força uma nova varredura |
+| `POST /save` | Campos `ssid` e `password` → `{"ok":true}` ou `{"ok":false,"erro":"..."}` |
+| `GET /status` | `{"ap":"Config-Sala","ssid":"Casa","conectado":false,"ip":"","versao":"4.0.0"}` |
+
+**Campos extras:** qualquer `<input name="...">` a mais no formulário (nome com até 15 caracteres) é salvo no Preferences com o mesmo nome:
+
+```html
+<input name="broker" placeholder="192.168.0.10">
 ```
-
-### Modo AWS IoT Core
-
 ```cpp
-const char awsCertCA[]      PROGMEM = R"EOF( ...AmazonRootCA1... )EOF";
-const char awsCertCRT[]     PROGMEM = R"CRT( ...certificado do dispositivo... )CRT";
-const char awsCertPrivate[] PROGMEM = R"KEY( ...chave privada... )KEY";
-
-ConfigAWS aws = {
-    "xxxx.iot.us-east-1.amazonaws.com",
-    8883,
-    "meu_thing_name",
-    awsCertCA, awsCertCRT, awsCertPrivate
-};
-
-conectividade.beginAWS(wifi, aws, topicos);
-```
-
----
-
-## Structs de configuração
-
-### `ConfigWiFi`
-```cpp
-ConfigWiFi wifi = {
-    "SSID",   // nome da rede
-    "SENHA"   // senha
-};
-```
-
-### `ConfigMQTT`
-```cpp
-ConfigMQTT mqtt = {
-    "broker.exemplo.com",  // endereço do broker
-    8883,                  // porta (1883 sem TLS, 8883 com TLS)
-    "esp32_meu_projeto",   // clientId — único por dispositivo
-    "usuario",             // "" para conexão anônima
-    "senha"                // "" para conexão anônima
-};
-```
-
-### `ConfigTLS`
-```cpp
-ConfigTLS tls = {
-    meuCertCA   // ponteiro para o certificado CA em PEM (PROGMEM)
-};
-```
-Deixe `certificadoCA = ""` para usar `setInsecure()` — **apenas para testes**.
-
-### `ConfigAWS`
-```cpp
-ConfigAWS aws = {
-    "xxxx.iot.us-east-1.amazonaws.com",  // endpoint
-    8883,                                 // porta
-    "meu_thing_name",                    // clientId
-    awsCertCA,                           // AmazonRootCA1.pem
-    awsCertCRT,                          // certificado do dispositivo
-    awsCertPrivate                       // chave privada
-};
-```
-
-### `ConfigTopicos`
-```cpp
-const char* pub[] = { "projeto/status", "projeto/dados" };
-const char* rec[] = { "projeto/comando" };
-
-ConfigTopicos topicos = {
-    pub, 2,   // array de publicação + quantidade
-    rec, 1    // array de recebimento + quantidade
-};
+String broker = conectividade.lerPreferencia("broker", "192.168.0.10");
 ```
 
 ---
 
-## API
+## Preferences (NVS)
 
-### Inicialização
+A biblioteca usa o namespace `"conectividade"` (mude com `-DCONNECTIVITY_NVS_NAMESPACE=\"outro\"`) e só o abre durante cada leitura/escrita. Seu código pode usar `Preferences` com outros namespaces ao mesmo tempo.
 
 ```cpp
-// Modo SIMPLES
-conectividade.beginSimples(wifi, mqtt, topicos);
+conectividade.salvarCredenciaisWiFi("Casa", "senha123");   // o portal faz isso por você
+conectividade.temCredenciaisWiFi();                         // bool
+conectividade.apagarCredenciaisWiFi();                      // "esquecer rede"
 
-// Modo TLS
-conectividade.beginTLS(wifi, mqtt, tls, topicos);
-
-// Modo AWS IoT
-conectividade.beginAWS(wifi, aws, topicos);
+// Valores do seu projeto, no mesmo namespace
+conectividade.salvarPreferencia("intervalo", "30");
+int intervalo = conectividade.lerPreferencia("intervalo", "10").toInt();
+conectividade.apagarPreferencia("intervalo");
 ```
 
-### Loop
+Chaves reservadas: `wifi_ssid` e `wifi_pass`.
+
+---
+
+## Publicação
 
 ```cpp
-conectividade.update();   // SEMPRE no loop() — nunca omita
+conectividade.publicar(0, "online");                 // por índice do array de tópicos
+conectividade.publicar("sala/luz", "on");            // por nome
+conectividade.publicar(1, payloadString);            // aceita String
+conectividade.publicar(0, "ping", false);            // false = não enfileira se offline
+conectividade.publicarQoS("sala/estado", "1", 0, true);   // retained
 ```
 
-### Buffer MQTT (opcional, antes do begin)
+Retorna `true` se publicou na hora e `false` se foi para a fila (ou foi descartada).
+
+> O PubSubClient **publica sempre em QoS 0**. QoS 1 vale só para as inscrições (a biblioteca se inscreve com QoS 1).
+
+### Status com Last Will
 
 ```cpp
-// Aumenta o limite para payloads maiores que 256 bytes
+conectividade.configurarStatus("sala/status");             // "online" / "offline"
+conectividade.configurarStatus("sala/status", "1", "0");   // textos personalizados
+```
+
+Ao conectar, publica `online` (retained). Se o ESP32 desligar ou perder a rede, o próprio broker publica `offline`.
+
+---
+
+## Fila offline
+
+Mensagens publicadas sem conexão vão para a fila e são enviadas na ordem quando o MQTT volta.
+
+```cpp
+// Antes do begin():
+conectividade.configurarFila(20, 64, 256);   // slots, bytes do tópico, bytes do payload
+conectividade.definirPoliticaFila(PoliticaFila::APENAS_ULTIMO);
+```
+
+| Política | Comportamento | Quando usar |
+|----------|---------------|-------------|
+| `FILA_COMPLETA` (padrão) | Guarda tudo; cheia → descarta a mais antiga | Eventos, logs, alarmes |
+| `APENAS_ULTIMO` | Guarda só a última mensagem **de cada tópico** | Estado atual (status, modo, posição) |
+| `DESCARTAR` | Não guarda nada offline | Leituras contínuas de sensor |
+
+Tópico ou payload maior que o slot é **recusado com erro** no log (antes era cortado sem aviso). Mensagens maiores que 256 bytes precisam de `configurarBufferMQTT()`:
+
+```cpp
 conectividade.configurarBufferMQTT(1024);
-conectividade.beginSimples(wifi, mqtt, topicos);
 ```
 
-| Parâmetro | Padrão | Máximo recomendado |
-|-----------|--------|--------------------|
-| Buffer MQTT | 256 bytes | 4096 bytes no ESP32 |
+### PSRAM (ESP32-S3 N16R8 e similares)
 
-### Fila offline
-
-#### Como funciona
-
-Toda mensagem passa pela fila **antes** de ser enviada — mesmo quando o MQTT está conectado. Isso garante que nenhuma mensagem seja perdida em caso de queda de conexão entre a chamada a `publicar()` e o envio efetivo pelo TCP:
-
+```ini
+board_build.arduino.memory_type = qio_opi
+build_flags =
+    -DBOARD_HAS_PSRAM
+    -DCONNECTIVITY_USAR_PSRAM=1
 ```
-publicar("topico", "payload")
-        │
-        ├── 1. Enfileira a mensagem (sempre)
-        │
-        └── 2. MQTT conectado?
-                  ├── Sim → tenta drenar a fila agora
-                  │           ├── Envio ok  → remove da fila → retorna true
-                  │           └── Falhou   → fica na fila  → retorna false
-                  └── Não → fica na fila até reconectar   → retorna false
-```
-
-A fila é drenada automaticamente pelo `update()` a cada `loop()` quando a conexão é restabelecida.
-
 ```cpp
-// Publica — sempre enfileira antes de enviar
-conectividade.publicar(0, "payload");          // por índice
-conectividade.publicar("topico/x", "payload"); // por nome
-
-// Consulta quantas mensagens estão aguardando
-conectividade.mensagensNaFila();   // uint8_t
+conectividade.configurarFila(200);   // ~63 KB na PSRAM
 ```
 
-#### Configurando o tamanho da fila
-
-O tamanho da fila é definido por `#define` em tempo de compilação. Declare os defines **antes** do `#include <ESP32Connectivity.h>` no `main.cpp`:
-
-```cpp
-// ⚠ DEVE vir ANTES do #include
-#define CONNECTIVITY_FILA_SLOTS       20   // número de mensagens (padrão: 10)
-#define CONNECTIVITY_FILA_TOPICO_MAX 128   // bytes por tópico  (padrão: 64)
-#define CONNECTIVITY_FILA_PAYLOAD_MAX 512  // bytes por payload (padrão: 256)
-
-#include <ESP32Connectivity.h>
-```
-
-> Não existe método runtime para alterar o tamanho — a fila é um array estático alocado em tempo de compilação, o que evita fragmentação de memória em embarcados.
+### Ajustes de compilação (`build_flags`)
 
 | Define | Padrão | Descrição |
 |--------|--------|-----------|
-| `CONNECTIVITY_FILA_SLOTS` | `10` | Número máximo de mensagens na fila |
-| `CONNECTIVITY_FILA_TOPICO_MAX` | `64` | Tamanho máximo do tópico em bytes |
-| `CONNECTIVITY_FILA_PAYLOAD_MAX` | `256` | Tamanho máximo do payload em bytes |
+| `CONNECTIVITY_FILA_SLOTS` | `10` | Slots padrão da fila |
+| `CONNECTIVITY_FILA_TOPICO_MAX` | `64` | Bytes por tópico |
+| `CONNECTIVITY_FILA_PAYLOAD_MAX` | `256` | Bytes por payload |
+| `CONNECTIVITY_DRENAR_POR_CICLO` | `10` | Mensagens enviadas da fila por `update()` |
+| `CONNECTIVITY_USAR_PSRAM` | `0` | Fila na PSRAM |
+| `CONNECTIVITY_NVS_NAMESPACE` | `"conectividade"` | Namespace do Preferences |
+| `CONNECTIVITY_PORTAL_PASTA` | `"/portal"` | Pasta da página do portal |
+| `CONNECTIVITY_FALHAS_PARA_PORTAL` | `3` | Falhas antes do portal automático |
 
-Quando a fila está cheia e uma nova mensagem chega, a **mensagem mais antiga é descartada** e um aviso é emitido no log (`[AVISO]`).
+> ⚠ Use `build_flags`. Um `#define` antes do `#include` **não** chega ao código da biblioteca.
 
-#### Buffer do PubSubClient (tamanho de cada pacote MQTT)
+---
 
-Diferente da fila, o buffer do PubSubClient controla o tamanho máximo de **cada mensagem individualmente**. O padrão é 256 bytes — se seu payload for maior, aumente antes do `begin`:
+## Estado e callbacks
 
 ```cpp
-conectividade.configurarBufferMQTT(1024);   // mensagens até 1 KB
-conectividade.beginSimples(wifi, mqtt, topicos);
+conectividade.wifiConectado();     // bool
+conectividade.mqttConectado();     // bool
+conectividade.mensagensNaFila();   // uint16_t
+conectividade.ssidAtual();         // String
+conectividade.definirHostname("esp32-sala");   // antes do begin
+
+conectividade.registrarCallbackWiFiConectado(   []() { ... });
+conectividade.registrarCallbackWiFiDesconectado([]() { ... });
+conectividade.registrarCallbackMQTTConectado(   []() { ... });
+conectividade.registrarCallbackMQTTDesconectado([]() { ... });
+conectividade.registrarCallbackMensagem([](const char* topico, const String& msg) { ... });
+conectividade.registrarCallbackPortalSalvo([](const String& ssid) { ... });
 ```
 
-### Estado
+Os callbacks aceitam lambdas com captura (`[&]`).
+
+---
+
+## English API
+
+Same library, same object (`connectivity` is the same as `conectividade`), English names:
 
 ```cpp
-conectividade.wifiConectado();    // bool
-conectividade.mqttConectado();    // bool
-conectividade.mensagensNaFila();  // uint8_t
+#include <ConectividadeESP32.h>
+
+const char* pubTopics[] = { "lab/status" };
+const char* subTopics[] = { "lab/cmd" };
+TopicsConfig topics = { pubTopics, 1, subTopics, 1 };
+
+void setup() {
+    configurarDebug(DEBUG_INFO);
+    connectivity.setAutoConfigPortal(true, "ESP32-Setup");
+    connectivity.onMessage([](const char* topic, const String& msg) { /* ... */ });
+    connectivity.beginTLS(SAVED_WIFI,
+                          { "broker.hivemq.com", 8883, "esp32_lab", "", "" },
+                          { "/certs/ca.pem" },
+                          topics);
+}
+
+void loop() {
+    connectivity.update();
+    connectivity.publish(0, "online");
+}
 ```
 
-### Callbacks
+| Português | English |
+|-----------|---------|
+| `beginSomenteWiFi` / `beginSimples` | `beginWiFiOnly` / `beginSimple` |
+| `beginTLS` / `beginAWS` / `update` | *(same)* |
+| `publicar` / `publicarQoS` | `publish` / `publishQoS` |
+| `configurarFila` / `definirPoliticaFila` | `setQueueSize` / `setQueuePolicy` |
+| `configurarBufferMQTT` / `definirQoSPadrao` | `setMQTTBufferSize` / `setDefaultQoS` |
+| `configurarStatus` / `definirHostname` | `setStatusTopic` / `setHostname` |
+| `wifiConectado` / `mqttConectado` | `isWiFiConnected` / `isMQTTConnected` |
+| `mensagensNaFila` / `ssidAtual` | `queuedMessages` / `currentSSID` |
+| `topicoPublicacao` / `topicoRecebimento` | `publishTopic` / `subscribeTopic` |
+| `registrarCallbackMensagem` | `onMessage` |
+| `registrarCallbackWiFiConectado` / `...Desconectado` | `onWiFiConnected` / `onWiFiDisconnected` |
+| `registrarCallbackMQTTConectado` / `...Desconectado` | `onMQTTConnected` / `onMQTTDisconnected` |
+| `registrarCallbackPortalSalvo` | `onPortalSaved` |
+| `iniciarPortalConfiguracao` / `pararPortalConfiguracao` | `startConfigPortal` / `stopConfigPortal` |
+| `portalAtivo` / `definirPortalAutomatico` / `definirPastaPortal` | `isConfigPortalActive` / `setAutoConfigPortal` / `setPortalFolder` |
+| `salvarCredenciaisWiFi` / `apagarCredenciaisWiFi` / `temCredenciaisWiFi` | `saveWiFiCredentials` / `clearWiFiCredentials` / `hasWiFiCredentials` |
+| `salvarPreferencia` / `lerPreferencia` / `apagarPreferencia` | `savePreference` / `readPreference` / `removePreference` |
+| `iniciarLittleFS` / `lerArquivo` | `beginLittleFS` / `readFile` |
+| `ConfigWiFi` `ConfigMQTT` `ConfigTLS` `ConfigAWS` `ConfigTopicos` | `WiFiConfig` `MQTTConfig` `TLSConfig` `AWSConfig` `TopicsConfig` |
+| `ModoConexao::SIMPLES` / `AWS_IOT` | `ConnectionMode::PLAIN` / `AWS` |
+| `PoliticaFila::FILA_COMPLETA` / `APENAS_ULTIMO` / `DESCARTAR` | `QueuePolicy::FULL_QUEUE` / `LATEST_ONLY` / `DROP` |
+| `WIFI_SALVO` | `SAVED_WIFI` |
+
+Struct fields also have English names: `password` (= `senha`), `port` (= `porta`), `username` (= `usuario`), `caCert` (= `certificadoCA`), `publish` / `publishCount` / `subscribe` / `subscribeCount`.
+
+---
+
+## Debug
 
 ```cpp
-conectividade.registrarCallbackWiFiConectado(   []() { ... } );
-conectividade.registrarCallbackWiFiDesconectado([]() { ... } );
-conectividade.registrarCallbackMQTTConectado(   []() { ... } );
-conectividade.registrarCallbackMQTTDesconectado([]() { ... } );
-conectividade.registrarCallbackMensagem(
-    [](const char* topico, const String& msg) { ... }
-);
-```
-
-### Debug
-
-```cpp
-// Inicializa o sistema de log (chame antes do begin)
-configurarDebug(DEBUG_INFO, 4);   // nível INFO, override no GPIO 4
-configurarDebug(DEBUG_TUDO, -1);  // nível TUDO, sem override
+configurarDebug(DEBUG_INFO, 4);   // nível INFO; GPIO 4 no GND ao ligar → DEBUG_TUDO
 ```
 
 | Nível | Constante | O que exibe |
@@ -308,7 +371,7 @@ configurarDebug(DEBUG_TUDO, -1);  // nível TUDO, sem override
 | 2 | `DEBUG_AVISO` | + Reconexões e timeouts |
 | 3 | `DEBUG_INFO` | + Fluxo normal |
 | 4 | `DEBUG_VERBOSE` | + Tentativas e estados internos |
-| 5 | `DEBUG_TUDO` | + Payloads e códigos de erro brutos |
+| 5 | `DEBUG_TUDO` | + Payloads |
 
 ---
 
@@ -316,63 +379,34 @@ configurarDebug(DEBUG_TUDO, -1);  // nível TUDO, sem override
 
 | Exemplo | Descrição |
 |---------|-----------|
-| `00_Template` | **Ponto de partida** — todos os modos comentados, pronto para parametrizar |
-| `01_WiFiBasico` | Conexão WiFi não-bloqueante com callbacks |
-| `02_MQTTBasico` | WiFi + MQTT com publicação periódica |
-| `03_FilaOffline` | Demonstra enfileiramento e drenagem automática |
+| `00_Template` | Ponto de partida com `secrets.h` / `secrets.cpp` |
+| `01_WiFiBasico` | Só WiFi, não-bloqueante |
+| `02_MQTTBasico` | WiFi + MQTT com callbacks e Last Will |
+| `03_FilaOffline` | Enfileiramento e envio ao reconectar |
+| `04_PortalWiFi` | Portal de configuração com HTML no LittleFS |
+| `05_EnglishAPI_LittleFS` | API em inglês + certificados TLS no LittleFS |
 
 ---
 
-## Máquinas de estado
+## Como funciona
 
 ```
 WiFi:  DESCONECTADO ──begin()──> CONECTANDO ──OK──> CONECTADO
-            ^                        |                   |
-            └── retry 5s ────────────┘ timeout 15s   queda
+            ^                        │                   │
+            └──── nova tentativa 5s ─┘ timeout 15s     queda
+                         │
+                 N falhas + portal automático → PORTAL (AP)
 
 MQTT:  DESCONECTADO ──WiFi OK──> CONECTANDO ──OK──> CONECTADO
-            ^                        |                   |
-            └── retry 5s ───── falha (máx 5x)       broker caiu
+            ^                        │                   │
+            └── 5s entre tentativas ─┘                broker caiu
+                5 falhas → pausa de 30s
 ```
+
+> `connect()` do PubSubClient bloqueia durante o handshake (1–3 s em TLS). A biblioteca limita esse tempo (handshake 8 s, socket 5 s), mas um loop com tempo crítico deve considerar isso.
 
 ---
 
 ## Licença
 
 MIT © 2026 [professorThiago](https://github.com/professorThiago)
-
----
-
-## ESP32-S3 N16R8 — usando PSRAM para a fila
-
-O modelo N16R8 tem 8 MB de PSRAM externa. Por padrão a fila é alocada na SRAM interna (512 KB). Com PSRAM habilitada, a fila pode ter centenas de slots sem impactar o restante do programa.
-
-### platformio.ini para N16R8 com PSRAM
-
-```ini
-[env:esp32-s3-n16r8]
-platform  = espressif32
-board     = esp32-s3-devkitm-1
-framework = arduino
-
-board_build.arduino.memory_type = qio_opi
-board_upload.flash_size          = 16MB
-board_build.partitions           = default_16MB.csv
-
-build_flags =
-    -DBOARD_HAS_PSRAM
-    -DCONNECTIVITY_USAR_PSRAM=1      ; aloca a fila na PSRAM
-    -DCONNECTIVITY_FILA_SLOTS=200    ; 200 slots × 324 bytes = ~63 KB na PSRAM
-```
-
-### Quanto usar?
-
-| Slots | RAM usada (slot padrão 64+256) | Indicado para |
-|-------|-------------------------------|---------------|
-| 20 | 6,3 KB — SRAM | Uso geral sem PSRAM |
-| 50 | 15,8 KB — SRAM | Logging moderado sem PSRAM |
-| 200 | 63 KB — **PSRAM** | Telemetria, quedas longas |
-| 500 | 158 KB — **PSRAM** | Logging intenso |
-| 1000 | 316 KB — **PSRAM** | Máximo prático |
-
-> A PSRAM é ~10× mais lenta que a SRAM interna, mas para uma fila de mensagens (acesso esporádico) isso é imperceptível. A biblioteca detecta automaticamente se a PSRAM está disponível — se `psramFound()` retornar `false`, aloca na SRAM sem travar.

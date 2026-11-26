@@ -1,9 +1,10 @@
 /**
  * @file ESP32Connectivity.cpp
- * @brief Implementação do gerenciador não-bloqueante de WiFi e MQTT.
+ * @brief Núcleo: WiFi, MQTT e fila offline.
+ *        (Portal em ESP32Connectivity_Portal.cpp; NVS/LittleFS em ESP32Connectivity_Storage.cpp)
  *
  * @author  professorThiago (https://github.com/professorThiago)
- * @version 3.0.0
+ * @version 4.0.0
  * @license MIT
  */
 
@@ -11,6 +12,7 @@
 #include "DebugManager.h"
 
 ESP32Connectivity  conectividade;
+ESP32Connectivity& connectivity = conectividade;
 ESP32Connectivity* ESP32Connectivity::_instancia = nullptr;
 
 // =============================================================================
@@ -37,7 +39,7 @@ static const char* traduzirCodigoMQTT(int c)
     switch (c) {
         case -4: return "-4: TIMEOUT — broker nao respondeu no keepalive";
         case -3: return "-3: CONNECTION_LOST — conexao TCP caiu";
-        case -2: return "-2: CONNECT_FAILED — falha TCP/TLS (verifique host e porta)";
+        case -2: return "-2: CONNECT_FAILED — falha TCP/TLS (verifique host, porta e certificados)";
         case -1: return "-1: DISCONNECTED — desconectado normalmente";
         case  0: return "0: CONNECTED";
         case  1: return "1: BAD_PROTOCOL — versao do protocolo rejeitada";
@@ -49,107 +51,248 @@ static const char* traduzirCodigoMQTT(int c)
     }
 }
 
+static inline const char* ouVazio(const char* s) { return s ? s : ""; }
+
+ESP32Connectivity::~ESP32Connectivity()
+{
+    pararPortalConfiguracao();
+    _liberarFila();
+}
+
 // =============================================================================
-// Inicialização — três sobrecargas (SIMPLES, TLS, AWS)
+// Inicialização
 // =============================================================================
 
-void ESP32Connectivity::beginSimples(const ConfigWiFi& wifi,
-                                      const ConfigMQTT& mqtt,
-                                      const ConfigTopicos& topicos)
+void ESP32Connectivity::beginSomenteWiFi(const ConfigWiFi& wifi)
 {
-    _modo    = ModoConexao::SIMPLES;
-    _wifi    = wifi;
-    _mqtt    = mqtt;
-    _topicos = topicos;
-    _iniciarWiFi();
+    _mqttHabilitado = false;
+    _beginComum(wifi);
+}
+
+void ESP32Connectivity::beginSimples(const ConfigWiFi& wifi,
+                                     const ConfigMQTT& mqtt,
+                                     const ConfigTopicos& topicos)
+{
+    _modo     = ModoConexao::SIMPLES;
+    _broker   = ouVazio(mqtt.broker);
+    _porta    = mqtt.porta > 0 ? mqtt.porta : 1883;
+    _clientId = ouVazio(mqtt.clientId);
+    _usuario  = ouVazio(mqtt.usuario);
+    _senhaMQTT= ouVazio(mqtt.senha);
+    _topicos  = topicos;
+    _mqttHabilitado = true;
+    _beginComum(wifi);
 }
 
 void ESP32Connectivity::beginTLS(const ConfigWiFi& wifi,
-                                  const ConfigMQTT& mqtt,
-                                  const ConfigTLS& tls,
-                                  const ConfigTopicos& topicos)
+                                 const ConfigMQTT& mqtt,
+                                 const ConfigTLS& tls,
+                                 const ConfigTopicos& topicos)
 {
-    _modo    = ModoConexao::TLS;
-    _wifi    = wifi;
-    _mqtt    = mqtt;
-    _tls     = tls;
-    _topicos = topicos;
-    _iniciarWiFi();
+    _modo     = ModoConexao::TLS;
+    _broker   = ouVazio(mqtt.broker);
+    _porta    = mqtt.porta > 0 ? mqtt.porta : 8883;
+    _clientId = ouVazio(mqtt.clientId);
+    _usuario  = ouVazio(mqtt.usuario);
+    _senhaMQTT= ouVazio(mqtt.senha);
+    _ca       = _resolverPEM(tls.certificadoCA, _pemCA, "CA");
+    _topicos  = topicos;
+    _mqttHabilitado = true;
+    _beginComum(wifi);
 }
 
 void ESP32Connectivity::beginAWS(const ConfigWiFi& wifi,
-                                   const ConfigAWS& aws,
-                                   const ConfigTopicos& topicos)
+                                 const ConfigAWS& aws,
+                                 const ConfigTopicos& topicos)
 {
-    _modo    = ModoConexao::AWS_IOT;
-    _wifi    = wifi;
-    _aws     = aws;
-    _topicos = topicos;
-    _iniciarWiFi();
+    _modo     = ModoConexao::AWS_IOT;
+    _broker   = ouVazio(aws.endpoint);
+    _porta    = aws.porta > 0 ? aws.porta : 8883;
+    _clientId = ouVazio(aws.clientId);
+    _usuario  = "";
+    _senhaMQTT= "";
+    _ca       = _resolverPEM(aws.certCA,      _pemCA,  "CA");
+    _crt      = _resolverPEM(aws.certCRT,     _pemCRT, "certificado do dispositivo");
+    _key      = _resolverPEM(aws.certPrivate, _pemKey, "chave privada");
+    _topicos  = topicos;
+    _mqttHabilitado = true;
+    _beginComum(wifi);
 }
 
-void ESP32Connectivity::_iniciarWiFi()
+void ESP32Connectivity::_beginComum(const ConfigWiFi& wifi)
 {
     _instancia = this;
 
-    // ── Alocação da fila ────────────────────────────────────────
-    _filaSlots = CONNECTIVITY_FILA_SLOTS;
+    debugInfo("==============================");
+    debugInfo(" ESP32Connectivity v" CONNECTIVITY_VERSAO);
+    debugInfo("==============================");
 
-#if CONNECTIVITY_USAR_PSRAM
-    if (psramFound())
+    if (_mqttHabilitado)
     {
-        _fila = static_cast<MensagemFila*>(
-            ps_malloc(_filaSlots * sizeof(MensagemFila)));
-        debugInfo("Fila alocada na PSRAM: " +
-                  String(_filaSlots) + " slots × " +
-                  String(sizeof(MensagemFila)) + " bytes = " +
-                  String(_filaSlots * sizeof(MensagemFila)) + " bytes");
+        if (!_alocarFila()) return;
+        _configurarClienteMQTT();
     }
-    else
-    {
-        debugAviso("PSRAM nao encontrada — usando SRAM interna.");
-        _fila = new MensagemFila[_filaSlots];
-    }
-#else
-    _fila = new MensagemFila[_filaSlots];
-    debugVerbose("Fila alocada na SRAM: " +
-                 String(_filaSlots) + " slots × " +
-                 String(sizeof(MensagemFila)) + " bytes = " +
-                 String(_filaSlots * sizeof(MensagemFila)) + " bytes");
-#endif
 
-    if (!_fila)
+    _carregarCredenciais(wifi);
+
+    WiFi.persistent(false);          // evita gravar a senha na flash a cada begin()
+    if (_hostname.length() > 0) WiFi.setHostname(_hostname.c_str());
+
+    _iniciado          = true;
+    _falhasWiFi        = 0;
+    _intervaloMQTT     = MQTT_RETRY_INTERVALO;
+
+    if (_portalLigado)
     {
-        debugErro("FALHA CRITICA: nao foi possivel alocar a fila!");
+        debugInfo("Portal aberto — o WiFi conecta depois que a rede for salva.");
         return;
     }
 
-    for (uint16_t i = 0; i < _filaSlots; i++) _fila[i].ocupado = false;
-    _filaInicio = _filaFim = _filaTamanho = 0;
-
-    _configurarClienteMQTT();
-
-    debugInfo("==============================");
-    debugInfo(" ESP32Connectivity v3.0.0");
-    debugInfo("==============================");
-    debugInfo("Iniciando conexao WiFi...");
-    debugVerbose("SSID: " + String(_wifi.ssid));
-
     WiFi.mode(WIFI_STA);
-    WiFi.begin(_wifi.ssid, _wifi.senha);
+    WiFi.setAutoReconnect(false);    // a reconexão é feita pela máquina de estados
 
+    if (_ssid.length() == 0)
+    {
+        debugAviso("Nenhuma rede WiFi configurada ou salva — abrindo o portal de configuracao.");
+        iniciarPortalConfiguracao(_portalNome.length() ? _portalNome.c_str() : nullptr,
+                                  _portalSenha.length() ? _portalSenha.c_str() : nullptr);
+        return;
+    }
+
+    _comecarConexaoWiFi();
+}
+
+void ESP32Connectivity::_carregarCredenciais(const ConfigWiFi& wifi)
+{
+    if (wifi.ssid && wifi.ssid[0] != '\0')
+    {
+        _ssid      = wifi.ssid;
+        _senhaWiFi = ouVazio(wifi.senha);
+        debugVerbose("WiFi: usando credenciais do codigo.");
+        return;
+    }
+
+    _ssid      = lerPreferencia("wifi_ssid", "");
+    _senhaWiFi = lerPreferencia("wifi_pass", "");
+    if (_ssid.length() > 0)
+        debugInfo("WiFi: usando credenciais salvas (rede '" + _ssid + "').");
+}
+
+void ESP32Connectivity::_comecarConexaoWiFi()
+{
+    debugInfo("Conectando ao WiFi '" + _ssid + "'...");
+    WiFi.disconnect();
+    WiFi.begin(_ssid.c_str(), _senhaWiFi.c_str());
     _estadoWiFi        = EstadoWiFi::CONECTANDO;
     _inicioConexaoWiFi = millis();
 }
 
+void ESP32Connectivity::definirHostname(const char* nome)
+{
+    _hostname = ouVazio(nome);
+}
+
 // =============================================================================
-// Configuração do buffer MQTT
+// Configuração de fila e MQTT
 // =============================================================================
+
+bool ESP32Connectivity::configurarFila(uint16_t slots, uint16_t topicoMax, uint16_t payloadMax)
+{
+    if (_fila)
+    {
+        debugErro("configurarFila(): chame ANTES do begin().");
+        return false;
+    }
+    _filaSlots  = slots      ? slots      : 1;
+    _topicoMax  = topicoMax  > 8 ? topicoMax  : 8;
+    _payloadMax = payloadMax > 8 ? payloadMax : 8;
+    return true;
+}
+
+bool ESP32Connectivity::_alocarFila()
+{
+    if (_fila) return true;   // begin() chamado de novo: reaproveita a fila
+
+    const size_t bytesTexto = (size_t)_filaSlots * (_topicoMax + _payloadMax);
+    const size_t bytesMeta  = (size_t)_filaSlots * sizeof(MensagemFila);
+
+#if CONNECTIVITY_USAR_PSRAM
+    if (psramFound())
+    {
+        _filaBuffer = static_cast<char*>(ps_malloc(bytesTexto));
+        if (_filaBuffer) debugInfo("Fila alocada na PSRAM.");
+    }
+    else
+    {
+        debugAviso("PSRAM nao encontrada — usando SRAM interna.");
+    }
+#endif
+    if (!_filaBuffer) _filaBuffer = static_cast<char*>(malloc(bytesTexto));
+    _fila = static_cast<MensagemFila*>(malloc(bytesMeta));
+
+    if (!_filaBuffer || !_fila)
+    {
+        debugErro("FALHA CRITICA: sem memoria para a fila (" + String((unsigned)(bytesTexto + bytesMeta)) +
+                  " bytes). Reduza com configurarFila().");
+        _liberarFila();
+        return false;
+    }
+
+    for (uint16_t i = 0; i < _filaSlots; i++)
+    {
+        _fila[i].topico   = _filaBuffer + (size_t)i * (_topicoMax + _payloadMax);
+        _fila[i].payload  = _fila[i].topico + _topicoMax;
+        _fila[i].topico[0] = _fila[i].payload[0] = '\0';
+        _fila[i].qos      = 0;
+        _fila[i].retained = false;
+    }
+    _filaInicio = _filaFim = _filaTamanho = 0;
+
+    debugVerbose("Fila: " + String(_filaSlots) + " slots x " +
+                 String(_topicoMax + _payloadMax) + " bytes = " +
+                 String((unsigned)(bytesTexto + bytesMeta)) + " bytes");
+    return true;
+}
+
+void ESP32Connectivity::_liberarFila()
+{
+    free(_filaBuffer);  _filaBuffer = nullptr;
+    free(_fila);        _fila       = nullptr;
+    _filaInicio = _filaFim = _filaTamanho = 0;
+}
 
 void ESP32Connectivity::configurarBufferMQTT(uint16_t tamanhoBytes)
 {
-    _mqttClient.setBufferSize(tamanhoBytes);
-    debugVerbose("Buffer MQTT configurado: " + String(tamanhoBytes) + " bytes");
+    if (_mqttClient.setBufferSize(tamanhoBytes))
+        debugVerbose("Buffer MQTT: " + String(tamanhoBytes) + " bytes");
+    else
+        debugErro("Buffer MQTT: sem memoria para " + String(tamanhoBytes) + " bytes");
+}
+
+void ESP32Connectivity::definirPoliticaFila(PoliticaFila politica)
+{
+    _politicaFila = politica;
+    switch (politica)
+    {
+        case PoliticaFila::FILA_COMPLETA: debugVerbose("Politica de fila: FILA_COMPLETA"); break;
+        case PoliticaFila::APENAS_ULTIMO: debugVerbose("Politica de fila: APENAS_ULTIMO"); break;
+        case PoliticaFila::DESCARTAR:     debugVerbose("Politica de fila: DESCARTAR");     break;
+    }
+}
+
+PoliticaFila ESP32Connectivity::obterPoliticaFila() const { return _politicaFila; }
+
+void ESP32Connectivity::definirQoSPadrao(uint8_t qos, bool retained)
+{
+    _qosPadrao      = (qos > 1) ? 1 : qos;
+    _retainedPadrao = retained;
+}
+
+void ESP32Connectivity::configurarStatus(const char* topico, const char* online, const char* offline)
+{
+    _topicoStatus  = ouVazio(topico);
+    _statusOnline  = ouVazio(online);
+    _statusOffline = ouVazio(offline);
 }
 
 // =============================================================================
@@ -158,6 +301,8 @@ void ESP32Connectivity::configurarBufferMQTT(uint16_t tamanhoBytes)
 
 void ESP32Connectivity::update()
 {
+    if (_portalLigado) _processarPortal();
+
     _processarWiFi();
     _processarMQTT();
 
@@ -172,9 +317,31 @@ void ESP32Connectivity::update()
 // Máquina de estados — WiFi
 // =============================================================================
 
+void ESP32Connectivity::_marcarWiFiDesconectado()
+{
+    bool estavaConectado = (_estadoWiFi == EstadoWiFi::CONECTADO);
+    _estadoWiFi        = EstadoWiFi::DESCONECTADO;
+    _inicioConexaoWiFi = millis();
+
+    if (_estadoMQTT != EstadoMQTT::DESCONECTADO)
+    {
+        bool mqttEstava = (_estadoMQTT == EstadoMQTT::CONECTADO);
+        _estadoMQTT = EstadoMQTT::DESCONECTADO;
+        if (mqttEstava)
+        {
+            debugAviso("MQTT desconectado junto com o WiFi.");
+            if (_cbMQTTDesconectado) _cbMQTTDesconectado();
+        }
+    }
+    if (estavaConectado && _cbWiFiDesconectado) _cbWiFiDesconectado();
+}
+
 void ESP32Connectivity::_processarWiFi()
 {
-    bool conectadoAgora = (WiFi.status() == WL_CONNECTED);
+    // Com o portal aberto a estação fica parada (trocar de canal derruba o AP)
+    if (_portalLigado || _ssid.length() == 0) return;
+
+    const bool conectadoAgora = (WiFi.status() == WL_CONNECTED);
 
     switch (_estadoWiFi)
     {
@@ -182,36 +349,36 @@ void ESP32Connectivity::_processarWiFi()
         {
             if (conectadoAgora)
             {
-                _estadoWiFi = EstadoWiFi::CONECTADO;
-                debugInfo("WiFi conectado!");
-                debugInfo("IP: " + WiFi.localIP().toString());
+                _estadoWiFi    = EstadoWiFi::CONECTADO;
+                _falhasWiFi    = 0;
+                _reabrirPortal = false;
+                debugInfo("WiFi conectado! IP: " + WiFi.localIP().toString());
                 debugVerbose("RSSI: " + String(WiFi.RSSI()) + " dBm");
 
                 if (_cbWiFiConectado) _cbWiFiConectado();
 
                 _estadoMQTT          = EstadoMQTT::DESCONECTADO;
                 _tentativasMQTT      = 0;
-                _ultimaTentativaMQTT = 0;
+                _intervaloMQTT       = 0;   // tenta o MQTT já
             }
             else if (millis() - _inicioConexaoWiFi > WIFI_TIMEOUT_MS)
             {
-                int ws = WiFi.status();
-                debugAviso("WiFi: timeout (" + String(WIFI_TIMEOUT_MS / 1000) + "s).");
+                const int ws = WiFi.status();
+                _falhasWiFi++;
+                debugAviso("WiFi: timeout (" + String(WIFI_TIMEOUT_MS / 1000) + "s). Falha " +
+                           String(_falhasWiFi) + ".");
                 debugErro("Status: " + String(traduzirStatusWiFi(ws)));
-
-                if (ws == 1) debugAviso("Dica: SSID '" + String(_wifi.ssid) + "' nao encontrado.");
-                if (ws == 4) debugAviso("Dica: verifique a senha do WiFi.");
+                if (ws == WL_NO_SSID_AVAIL) debugAviso("Dica: rede '" + _ssid + "' nao encontrada.");
+                if (ws == WL_CONNECT_FAILED) debugAviso("Dica: verifique a senha do WiFi.");
 
                 _estadoWiFi        = EstadoWiFi::DESCONECTADO;
                 _inicioConexaoWiFi = millis();
-            }
-            else
-            {
-                static uint32_t ultimoPonto = 0;
-                if (millis() - ultimoPonto >= 2000) {
-                    ultimoPonto = millis();
-                    debugVerbose("WiFi: aguardando... (" +
-                                 String((millis() - _inicioConexaoWiFi) / 1000) + "s)");
+
+                if ((_portalAuto || _reabrirPortal) && _falhasWiFi >= _falhasParaPortal)
+                {
+                    debugAviso("WiFi: " + String(_falhasWiFi) + " falhas seguidas — abrindo o portal.");
+                    iniciarPortalConfiguracao(_portalNome.length() ? _portalNome.c_str() : nullptr,
+                                              _portalSenha.length() ? _portalSenha.c_str() : nullptr);
                 }
             }
             break;
@@ -221,24 +388,9 @@ void ESP32Connectivity::_processarWiFi()
         {
             if (!conectadoAgora)
             {
-                int ws = WiFi.status();
-                _estadoWiFi = EstadoWiFi::DESCONECTADO;
-                debugErro("WiFi desconectado!");
-                debugErro("Status: " + String(traduzirStatusWiFi(ws)));
-
-                if (ws == 5) debugAviso("Dica: sinal fraco ou roteador reiniciou.");
-                if (ws == 1) debugAviso("Dica: rede sumiu do alcance.");
-
-                if (_cbWiFiDesconectado) _cbWiFiDesconectado();
-
-                // MQTT cai junto
-                if (_estadoMQTT == EstadoMQTT::CONECTADO) {
-                    _estadoMQTT = EstadoMQTT::DESCONECTADO;
-                    debugAviso("MQTT desconectado junto com o WiFi.");
-                    if (_cbMQTTDesconectado) _cbMQTTDesconectado();
-                }
-
-                _inicioConexaoWiFi = millis();
+                const int ws = WiFi.status();
+                debugErro("WiFi desconectado! Status: " + String(traduzirStatusWiFi(ws)));
+                _marcarWiFiDesconectado();
             }
             break;
         }
@@ -248,11 +400,7 @@ void ESP32Connectivity::_processarWiFi()
             if (millis() - _inicioConexaoWiFi >= WIFI_RETRY_INTERVALO)
             {
                 debugAviso("WiFi: tentando reconectar...");
-                debugVerbose("Status atual: " + String(traduzirStatusWiFi(WiFi.status())));
-                WiFi.disconnect();
-                WiFi.begin(_wifi.ssid, _wifi.senha);
-                _estadoWiFi        = EstadoWiFi::CONECTANDO;
-                _inicioConexaoWiFi = millis();
+                _comecarConexaoWiFi();
             }
             break;
         }
@@ -265,27 +413,28 @@ void ESP32Connectivity::_processarWiFi()
 
 void ESP32Connectivity::_processarMQTT()
 {
-    if (_estadoWiFi != EstadoWiFi::CONECTADO) return;
+    if (!_mqttHabilitado || _estadoWiFi != EstadoWiFi::CONECTADO) return;
 
     switch (_estadoMQTT)
     {
         case EstadoMQTT::DESCONECTADO:
         {
-            if (millis() - _ultimaTentativaMQTT < MQTT_RETRY_INTERVALO) return;
+            if (millis() - _ultimaTentativaMQTT < _intervaloMQTT) return;
 
             if (_tentativasMQTT >= MQTT_MAX_TENTATIVAS)
             {
-                uint32_t pausa = MQTT_RETRY_INTERVALO * 6;
-                debugAviso("MQTT: maximo de tentativas. Pausando " + String(pausa / 1000) + "s...");
+                debugAviso("MQTT: " + String(MQTT_MAX_TENTATIVAS) + " falhas. Pausando " +
+                           String(MQTT_PAUSA_LONGA / 1000) + "s...");
                 _tentativasMQTT      = 0;
-                _ultimaTentativaMQTT = millis() + (MQTT_RETRY_INTERVALO * 5);
+                _ultimaTentativaMQTT = millis();
+                _intervaloMQTT       = MQTT_PAUSA_LONGA;
                 return;
             }
 
-            debugVerbose("MQTT: tentativa " + String(_tentativasMQTT + 1) +
-                         "/" + String(MQTT_MAX_TENTATIVAS));
-            _ultimaTentativaMQTT = millis();
             _tentativasMQTT++;
+            _ultimaTentativaMQTT = millis();
+            _intervaloMQTT       = MQTT_RETRY_INTERVALO;
+            debugVerbose("MQTT: tentativa " + String(_tentativasMQTT) + "/" + String(MQTT_MAX_TENTATIVAS));
             _estadoMQTT = EstadoMQTT::CONECTANDO;
             break;
         }
@@ -296,28 +445,25 @@ void ESP32Connectivity::_processarMQTT()
             {
                 _estadoMQTT     = EstadoMQTT::CONECTADO;
                 _tentativasMQTT = 0;
-                debugInfo("MQTT conectado!");
-
-                const char* cid = (_modo == ModoConexao::AWS_IOT) ? _aws.clientId : _mqtt.clientId;
-                debugVerbose("Client ID: " + String(cid));
+                debugInfo("MQTT conectado! (client ID: " + _clientId + ")");
 
                 _inscreverTopicos();
-                if (_topicos.nPublicar > 0)
+
+                if (_topicoStatus.length() > 0)
+                    _publicarDireto(_topicoStatus.c_str(), _statusOnline.c_str(), 0, true);
+                else if (_topicos.nPublicar > 0)   // comportamento da v3
                     _publicarDireto(_topicos.publicar[0], "ESP32 conectado ao MQTT", 0, false);
 
                 if (_cbMQTTConectado) _cbMQTTConectado();
             }
             else
             {
-                int codigo = _mqttClient.state();
-                debugErro("MQTT: falha na conexao!");
-                debugErro("Codigo: " + String(traduzirCodigoMQTT(codigo)));
-
-                if (codigo == 4) debugAviso("Dica: verifique usuario e senha do broker.");
-                if (codigo == 2) debugAviso("Dica: tente outro clientId.");
+                const int codigo = _mqttClient.state();
+                debugErro("MQTT: falha na conexao! Codigo: " + String(traduzirCodigoMQTT(codigo)));
+                if (codigo == 4)  debugAviso("Dica: verifique usuario e senha do broker.");
+                if (codigo == 2)  debugAviso("Dica: tente outro clientId.");
                 if (codigo == -2) debugAviso("Dica: verifique broker, porta e certificados.");
-                if (codigo == 5) debugAviso("Dica: verifique certificados ou permissoes ACL.");
-
+                if (codigo == 5)  debugAviso("Dica: verifique certificados ou permissoes ACL.");
                 _estadoMQTT = EstadoMQTT::DESCONECTADO;
             }
             break;
@@ -327,11 +473,10 @@ void ESP32Connectivity::_processarMQTT()
         {
             if (!_mqttClient.connected())
             {
-                int codigo = _mqttClient.state();
-                _estadoMQTT = EstadoMQTT::DESCONECTADO;
-                debugErro("MQTT desconectado inesperadamente!");
-                debugErro("Codigo: " + String(traduzirCodigoMQTT(codigo)));
-                debugAviso("Tentando reconectar...");
+                debugErro("MQTT desconectado! Codigo: " + String(traduzirCodigoMQTT(_mqttClient.state())));
+                _estadoMQTT          = EstadoMQTT::DESCONECTADO;
+                _ultimaTentativaMQTT = millis();
+                _intervaloMQTT       = MQTT_RETRY_INTERVALO;
                 if (_cbMQTTDesconectado) _cbMQTTDesconectado();
             }
             break;
@@ -341,122 +486,88 @@ void ESP32Connectivity::_processarMQTT()
 
 bool ESP32Connectivity::_tentarConectarMQTT()
 {
-    if (_modo == ModoConexao::AWS_IOT)
-    {
-        debugVerbose("MQTT: conectando como AWS IoT (mTLS)...");
-        return _mqttClient.connect(_aws.clientId);
-    }
+    // Observação: connect() do PubSubClient bloqueia durante o handshake
+    // (TLS pode levar 1–3 s). O timeout é limitado em _configurarClienteMQTT().
+    const char* usuario = _usuario.length()   ? _usuario.c_str()   : nullptr;
+    const char* senha   = _senhaMQTT.length() ? _senhaMQTT.c_str() : nullptr;
+    const char* lwt     = _topicoStatus.length() ? _topicoStatus.c_str() : nullptr;
 
-    if (strlen(_mqtt.usuario) > 0)
-    {
-        debugVerbose("MQTT: conectando com usuario/senha...");
-        return _mqttClient.connect(_mqtt.clientId, _mqtt.usuario, _mqtt.senha);
-    }
+    debugVerbose(String("MQTT: conectando") + (usuario ? " com usuario/senha" : " anonimamente") +
+                 (lwt ? " (com LWT)" : "") + "...");
 
-    debugVerbose("MQTT: conectando anonimamente...");
-    return _mqttClient.connect(_mqtt.clientId);
+    return _mqttClient.connect(_clientId.c_str(), usuario, senha,
+                               lwt, 0, true, lwt ? _statusOffline.c_str() : nullptr);
 }
 
 void ESP32Connectivity::_inscreverTopicos()
 {
-    debugVerbose("MQTT: inscrevendo em " + String(_topicos.nReceber) + " topico(s)...");
     for (int i = 0; i < _topicos.nReceber; i++)
     {
         const char* t = _topicos.receber[i];
-        if (!t || strlen(t) == 0) continue;
-        if (_mqttClient.subscribe(t))
+        if (!t || t[0] == '\0') continue;
+        if (_mqttClient.subscribe(t, 1))
             debugInfo("MQTT: inscrito em '" + String(t) + "'");
         else
             debugErro("MQTT: falha ao inscrever em '" + String(t) + "'");
     }
 }
 
-// =============================================================================
-// Configuração do cliente MQTT
-// =============================================================================
-
 void ESP32Connectivity::_configurarClienteMQTT()
 {
-    debugInfo("Modo de conexao: " +
-              String(_modo == ModoConexao::SIMPLES ? "MQTT SIMPLES" :
-                     _modo == ModoConexao::TLS     ? "MQTT TLS"     : "AWS IOT CORE"));
+    debugInfo(String("Modo MQTT: ") +
+              (_modo == ModoConexao::SIMPLES ? "SIMPLES" :
+               _modo == ModoConexao::TLS     ? "TLS"     : "AWS IOT CORE") +
+              " -> " + _broker + ":" + String(_porta));
 
-    if (_modo == ModoConexao::AWS_IOT)
+    if (_clientId.length() == 0)
     {
-        debugVerbose("Endpoint: " + String(_aws.endpoint));
-        debugVerbose("Porta: "    + String(_aws.porta));
-        _wifiClienteSeguro.setCACert(_aws.certCA);
-        _wifiClienteSeguro.setCertificate(_aws.certCRT);
-        _wifiClienteSeguro.setPrivateKey(_aws.certPrivate);
-        _mqttClient.setClient(_wifiClienteSeguro);
-        _mqttClient.setServer(_aws.endpoint, _aws.porta);
+        _clientId = _nomeAPPadrao();
+        debugAviso("clientId vazio — usando '" + _clientId + "'.");
     }
-    else if (_modo == ModoConexao::TLS)
-    {
-        debugVerbose("Broker: " + String(_mqtt.broker));
-        debugVerbose("Porta: "  + String(_mqtt.porta));
 
-        if (_tls.certificadoCA && strlen(_tls.certificadoCA) > 100)
-        {
-            debugVerbose("Certificado CA: configurado.");
-            _wifiClienteSeguro.setCACert(_tls.certificadoCA);
-        }
-        else
+    if (_modo == ModoConexao::SIMPLES)
+    {
+        _mqttClient.setClient(_wifiCliente);
+    }
+    else
+    {
+        if (_ca) _wifiClienteSeguro.setCACert(_ca);
+        else if (_modo == ModoConexao::TLS)
         {
             debugAviso("Certificado CA ausente — usando setInsecure() (APENAS PARA TESTES!)");
             _wifiClienteSeguro.setInsecure();
         }
 
+        if (_modo == ModoConexao::AWS_IOT)
+        {
+            if (!_ca || !_crt || !_key)
+                debugErro("AWS IoT: faltam certificados (CA, dispositivo e chave privada sao obrigatorios).");
+            if (_crt) _wifiClienteSeguro.setCertificate(_crt);
+            if (_key) _wifiClienteSeguro.setPrivateKey(_key);
+        }
+        _wifiClienteSeguro.setHandshakeTimeout(8);
         _mqttClient.setClient(_wifiClienteSeguro);
-        _mqttClient.setServer(_mqtt.broker, _mqtt.porta);
-    }
-    else // SIMPLES
-    {
-        debugVerbose("Broker: " + String(_mqtt.broker));
-        debugVerbose("Porta: "  + String(_mqtt.porta));
-        _mqttClient.setClient(_wifiCliente);
-        _mqttClient.setServer(_mqtt.broker, _mqtt.porta);
     }
 
+    _mqttClient.setServer(_broker.c_str(), (uint16_t)_porta);
+    _mqttClient.setSocketTimeout(5);
     _mqttClient.setCallback(_callbackMQTTEstatico);
-}
-
-// =============================================================================
-// =============================================================================
-// Política de fila e QoS padrão
-// =============================================================================
-
-void ESP32Connectivity::definirPoliticaFila(PoliticaFila politica)
-{
-    _politicaFila = politica;
-    switch (politica)
-    {
-        case PoliticaFila::FILA_COMPLETA:
-            debugVerbose("Politica de fila: FILA_COMPLETA"); break;
-        case PoliticaFila::APENAS_ULTIMO:
-            debugVerbose("Politica de fila: APENAS_ULTIMO"); break;
-        case PoliticaFila::DESCARTAR:
-            debugVerbose("Politica de fila: DESCARTAR");     break;
-    }
-}
-
-PoliticaFila ESP32Connectivity::obterPoliticaFila() const { return _politicaFila; }
-
-void ESP32Connectivity::definirQoSPadrao(uint8_t qos, bool retained)
-{
-    _qosPadrao      = (qos > 1) ? 1 : qos;
-    _retainedPadrao = retained;
-    debugVerbose("QoS padrao: " + String(_qosPadrao) +
-                 " | Retained padrao: " + String(_retainedPadrao ? "true" : "false"));
 }
 
 // =============================================================================
 // Publicação
 // =============================================================================
 
+bool ESP32Connectivity::_online()
+{
+    return _estadoMQTT == EstadoMQTT::CONECTADO &&
+           WiFi.status() == WL_CONNECTED &&
+           _mqttClient.connected();
+}
+
 bool ESP32Connectivity::publicar(int indiceTopico, const char* mensagem, bool enfileirar)
 {
-    return publicar(topicoPublicacao(indiceTopico), mensagem, enfileirar);
+    return publicarQoS(topicoPublicacao(indiceTopico), mensagem, _qosPadrao, _retainedPadrao, enfileirar);
 }
 
 bool ESP32Connectivity::publicar(const char* topico, const char* mensagem, bool enfileirar)
@@ -465,79 +576,69 @@ bool ESP32Connectivity::publicar(const char* topico, const char* mensagem, bool 
 }
 
 bool ESP32Connectivity::publicarQoS(const char* topico, const char* mensagem,
-                                     uint8_t qos, bool retained, bool enfileirar)
+                                    uint8_t qos, bool retained, bool enfileirar)
 {
-    if (!topico || strlen(topico) == 0)
+    if (!_mqttHabilitado || !_fila)
+    {
+        debugErro("publicar(): MQTT nao iniciado (use beginSimples/beginTLS/beginAWS).");
+        return false;
+    }
+    if (!topico || topico[0] == '\0')
     {
         debugErro("publicar(): topico vazio ou invalido.");
         return false;
     }
+    if (!mensagem) mensagem = "";
 
-    qos = (qos > 1) ? 1 : qos;
-
-    bool redeOk = (_estadoWiFi == EstadoWiFi::CONECTADO) &&
-                  (WiFi.status() == WL_CONNECTED)         &&
-                  (_estadoMQTT  == EstadoMQTT::CONECTADO) &&
-                  (_mqttClient.connected());
-
-    // ── Sem fila (enfileirar=false): descarta se offline ─────
-    if (!enfileirar)
+    if (qos > 0 && !_avisouQoS)
     {
-        if (redeOk) return _publicarDireto(topico, mensagem, qos, retained);
-        debugVerbose("Mensagem descartada (enfileirar=false, offline).");
+        debugAviso("PubSubClient publica sempre em QoS 0 (QoS 1 vale so para inscricoes).");
+        _avisouQoS = true;
+    }
+
+    // Mensagem que nunca caberia no buffer do PubSubClient travaria a fila
+    const size_t pacote = strlen(topico) + strlen(mensagem) + 7;
+    if (pacote > _mqttClient.getBufferSize())
+    {
+        debugErro("publicar(): mensagem de " + String((unsigned)pacote) + " bytes excede o buffer MQTT (" +
+                  String(_mqttClient.getBufferSize()) + "). Use configurarBufferMQTT().");
         return false;
     }
 
-    // ── Política DESCARTAR ────────────────────────────────────
-    if (_politicaFila == PoliticaFila::DESCARTAR)
+    const bool online = _online();
+
+    // Sem fila: envia agora ou descarta
+    if (!enfileirar || _politicaFila == PoliticaFila::DESCARTAR)
     {
-        if (redeOk) return _publicarDireto(topico, mensagem, qos, retained);
-        debugVerbose("Politica DESCARTAR: mensagem descartada (offline).");
+        if (online) return _publicarDireto(topico, mensagem, qos, retained);
+        debugVerbose("Offline: mensagem descartada.");
         return false;
     }
 
-    // ── Política APENAS_ULTIMO ────────────────────────────────
-    if (_politicaFila == PoliticaFila::APENAS_ULTIMO)
-    {
-        if (_filaTamanho > 0)
-        {
-            debugVerbose("Politica APENAS_ULTIMO: substituindo mensagem anterior.");
-            for (uint16_t i = 0; i < _filaSlots; i++) _fila[i].ocupado = false;
-            _filaInicio = _filaFim = _filaTamanho = 0;
-        }
-        _enfileirar(topico, mensagem, qos, retained);
-        if (redeOk) _drenaFila();
-        return (_filaTamanho == 0);
-    }
+    // Online e sem pendências: envia direto (sem truncar)
+    if (online && _filaTamanho == 0 && _publicarDireto(topico, mensagem, qos, retained))
+        return true;
 
-    // ── Política FILA_COMPLETA (padrão) ──────────────────────
-    _enfileirar(topico, mensagem, qos, retained);
-    if (redeOk) _drenaFila();
-    return (_filaTamanho == 0);
+    // Offline, falha no envio, ou há mensagens anteriores (preserva a ordem)
+    if (!_enfileirar(topico, mensagem, qos, retained)) return false;
+    if (online) _drenaFila();
+    return false;
 }
 
 bool ESP32Connectivity::_publicarDireto(const char* topico, const char* payload,
-                                         uint8_t qos, bool retained)
+                                        uint8_t qos, bool retained)
 {
-    bool ok;
-    if (qos == 1)
-        ok = _mqttClient.publish(topico,
-                                 reinterpret_cast<const uint8_t*>(payload),
-                                 strlen(payload), retained);
-    else
-        ok = _mqttClient.publish(topico, payload, retained);
-
+    (void)qos;
+    const bool ok = _mqttClient.publish(topico, payload, retained);
     if (ok)
     {
-        debugInfo("MQTT publicado em '" + String(topico) +
-                  "' [QoS " + String(qos) +
-                  (retained ? ", retained" : "") + "]");
+        debugInfo("MQTT publicado em '" + String(topico) + "'" + (retained ? " [retained]" : ""));
         debugTudo("Payload: " + String(payload));
     }
     else
     {
-        debugErro("MQTT: falha ao publicar em '" + String(topico) + "'");
-        debugErro("Codigo: " + String(traduzirCodigoMQTT(_mqttClient.state())));
+        debugErro("MQTT: falha ao publicar em '" + String(topico) + "' — " +
+                  String(traduzirCodigoMQTT(_mqttClient.state())));
     }
     return ok;
 }
@@ -546,66 +647,88 @@ bool ESP32Connectivity::_publicarDireto(const char* topico, const char* payload,
 // Fila offline
 // =============================================================================
 
-void ESP32Connectivity::_enfileirar(const char* topico, const char* payload,
-                                     uint8_t qos, bool retained)
+bool ESP32Connectivity::_enfileirar(const char* topico, const char* payload,
+                                    uint8_t qos, bool retained)
 {
+    const size_t lt = strlen(topico), lp = strlen(payload);
+    if (lt >= _topicoMax)
+    {
+        debugErro("Fila: topico com " + String((unsigned)lt) + " bytes (max " + String(_topicoMax - 1) +
+                  "). Aumente com configurarFila().");
+        return false;
+    }
+    if (lp >= _payloadMax)
+    {
+        debugErro("Fila: payload com " + String((unsigned)lp) + " bytes (max " + String(_payloadMax - 1) +
+                  "). Aumente com configurarFila().");
+        return false;
+    }
+
+    // APENAS_ULTIMO: substitui a mensagem pendente do MESMO tópico
+    if (_politicaFila == PoliticaFila::APENAS_ULTIMO)
+    {
+        for (uint16_t n = 0; n < _filaTamanho; n++)
+        {
+            MensagemFila& m = _fila[(_filaInicio + n) % _filaSlots];
+            if (strcmp(m.topico, topico) == 0)
+            {
+                memcpy(m.payload, payload, lp + 1);
+                m.qos = qos;
+                m.retained = retained;
+                debugVerbose("Fila: mensagem de '" + String(topico) + "' substituida.");
+                return true;
+            }
+        }
+    }
+
     if (_filaTamanho >= _filaSlots)
     {
-        debugAviso("Fila cheia (" + String(_filaSlots) +
-                   " slots) — descartando mensagem mais antiga.");
+        debugAviso("Fila cheia (" + String(_filaSlots) + ") — descartando a mais antiga.");
         _filaInicio = (_filaInicio + 1) % _filaSlots;
         _filaTamanho--;
     }
 
     MensagemFila& slot = _fila[_filaFim];
-    strncpy(slot.topico,  topico,  CONNECTIVITY_FILA_TOPICO_MAX  - 1);
-    strncpy(slot.payload, payload, CONNECTIVITY_FILA_PAYLOAD_MAX - 1);
-    slot.topico [CONNECTIVITY_FILA_TOPICO_MAX  - 1] = '\0';
-    slot.payload[CONNECTIVITY_FILA_PAYLOAD_MAX - 1] = '\0';
+    memcpy(slot.topico,  topico,  lt + 1);
+    memcpy(slot.payload, payload, lp + 1);
     slot.qos      = qos;
     slot.retained = retained;
-    slot.ocupado  = true;
 
     _filaFim = (_filaFim + 1) % _filaSlots;
     _filaTamanho++;
-    debugVerbose("Mensagem enfileirada. Fila: " + String(_filaTamanho) +
-                 "/" + String(_filaSlots));
+    debugVerbose("Mensagem enfileirada. Fila: " + String(_filaTamanho) + "/" + String(_filaSlots));
+    return true;
 }
 
 void ESP32Connectivity::_drenaFila()
 {
     if (_filaTamanho == 0) return;
 
-    debugInfo("Drenando fila: " + String(_filaTamanho) + " mensagem(ns)...");
-
-    while (_filaTamanho > 0 && _mqttClient.connected())
+    uint16_t enviadas = 0;
+    while (_filaTamanho > 0 && enviadas < CONNECTIVITY_DRENAR_POR_CICLO && _mqttClient.connected())
     {
         MensagemFila& slot = _fila[_filaInicio];
-        if (slot.ocupado)
-        {
-            if (!_publicarDireto(slot.topico, slot.payload,
-                                  slot.qos, slot.retained)) break;
-            slot.ocupado = false;
-        }
+        if (!_publicarDireto(slot.topico, slot.payload, slot.qos, slot.retained)) break;
         _filaInicio = (_filaInicio + 1) % _filaSlots;
         _filaTamanho--;
+        enviadas++;
     }
 
-    if (_filaTamanho == 0)
-        debugInfo("Fila drenada com sucesso.");
+    if (enviadas > 0 && _filaTamanho == 0) debugInfo("Fila drenada.");
 }
 
 // =============================================================================
 // Estado e tópicos
 // =============================================================================
 
-bool    ESP32Connectivity::wifiConectado()   const { return _estadoWiFi == EstadoWiFi::CONECTADO; }
-bool    ESP32Connectivity::mqttConectado()   const { return _estadoMQTT == EstadoMQTT::CONECTADO; }
-uint8_t ESP32Connectivity::mensagensNaFila() const { return _filaTamanho; }
+bool     ESP32Connectivity::wifiConectado()   const { return _estadoWiFi == EstadoWiFi::CONECTADO; }
+bool     ESP32Connectivity::mqttConectado()   const { return _estadoMQTT == EstadoMQTT::CONECTADO; }
+uint16_t ESP32Connectivity::mensagensNaFila() const { return _filaTamanho; }
+String   ESP32Connectivity::ssidAtual()       const { return _ssid; }
 
 const char* ESP32Connectivity::topicoPublicacao(int i) const
 {
-    if (i < 0 || i >= _topicos.nPublicar) {
+    if (i < 0 || i >= _topicos.nPublicar || !_topicos.publicar) {
         debugErro("topicoPublicacao(): indice invalido: " + String(i));
         return "";
     }
@@ -614,7 +737,7 @@ const char* ESP32Connectivity::topicoPublicacao(int i) const
 
 const char* ESP32Connectivity::topicoRecebimento(int i) const
 {
-    if (i < 0 || i >= _topicos.nReceber) {
+    if (i < 0 || i >= _topicos.nReceber || !_topicos.receber) {
         debugErro("topicoRecebimento(): indice invalido: " + String(i));
         return "";
     }
@@ -625,20 +748,12 @@ const char* ESP32Connectivity::topicoRecebimento(int i) const
 // Callbacks
 // =============================================================================
 
-void ESP32Connectivity::registrarCallbackMensagem(CallbackMensagemMQTT cb)
-{
-    _cbMensagem = cb;
-    debugVerbose(cb ? "Callback de mensagem registrado." : "Callback de mensagem removido.");
-}
-
-void ESP32Connectivity::registrarCallbackWiFiConectado   (CallbackWiFi cb) { _cbWiFiConectado    = cb; }
-void ESP32Connectivity::registrarCallbackWiFiDesconectado(CallbackWiFi cb) { _cbWiFiDesconectado = cb; }
-void ESP32Connectivity::registrarCallbackMQTTConectado   (CallbackMQTT cb) { _cbMQTTConectado    = cb; }
-void ESP32Connectivity::registrarCallbackMQTTDesconectado(CallbackMQTT cb) { _cbMQTTDesconectado = cb; }
-
-// =============================================================================
-// Callback interno PubSubClient
-// =============================================================================
+void ESP32Connectivity::registrarCallbackMensagem        (CallbackMensagemMQTT cb) { _cbMensagem         = cb; }
+void ESP32Connectivity::registrarCallbackWiFiConectado   (CallbackWiFi cb)         { _cbWiFiConectado    = cb; }
+void ESP32Connectivity::registrarCallbackWiFiDesconectado(CallbackWiFi cb)         { _cbWiFiDesconectado = cb; }
+void ESP32Connectivity::registrarCallbackMQTTConectado   (CallbackMQTT cb)         { _cbMQTTConectado    = cb; }
+void ESP32Connectivity::registrarCallbackMQTTDesconectado(CallbackMQTT cb)         { _cbMQTTDesconectado = cb; }
+void ESP32Connectivity::registrarCallbackPortalSalvo     (CallbackPortalSalvo cb)  { _cbPortalSalvo      = cb; }
 
 void ESP32Connectivity::_callbackMQTTEstatico(char* topico, byte* payload, unsigned int tamanho)
 {
@@ -654,8 +769,6 @@ void ESP32Connectivity::_callbackMQTT(char* topico, byte* payload, unsigned int 
     debugInfo("Mensagem recebida em '" + String(topico) + "'");
     debugTudo("Payload (" + String(tamanho) + " bytes): " + mensagem);
 
-    if (_cbMensagem)
-        _cbMensagem(topico, mensagem);
-    else
-        debugAviso("Mensagem recebida mas nenhum callback registrado.");
+    if (_cbMensagem) _cbMensagem(topico, mensagem);
+    else             debugAviso("Mensagem recebida mas nenhum callback registrado.");
 }
