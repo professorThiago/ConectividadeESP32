@@ -7,3 +7,8 @@ Thumbs.db
 
 # Credenciais — NUNCA suba para o repositório
 src/secrets.cpp
+
+# Chaves privadas e certificados de dispositivo
+*.key
+data/certs/*.crt
+data/certs/*.pem

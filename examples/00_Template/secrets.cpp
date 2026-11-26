@@ -31,7 +31,10 @@ const char* MQTT_CLIENT_ID = "esp32_meu_projeto";
 const char* MQTT_USUARIO   = "";
 const char* MQTT_SENHA     = "";
 
-// Certificado CA do broker em PEM (necessário se USAR_AWS_IOT = false e TLS = true)
+// Certificado CA do broker (modo TLS). Duas opções:
+//   a) Cole o PEM abaixo, ou
+//   b) Use um arquivo no LittleFS: const char* MQTT_CERTIFICADO_CA = "/certs/ca.pem";
+//      (mude também a declaração em secrets.h para "extern const char* ...")
 // Deixe vazio para usar setInsecure() — APENAS PARA TESTES
 const char MQTT_CERTIFICADO_CA[] PROGMEM = R"EOF(
 -----BEGIN CERTIFICATE-----
@@ -47,6 +50,9 @@ const bool USAR_AWS_IOT = false;
 const char* AWS_IOT_ENDPOINT  = "XXXX.iot.us-east-1.amazonaws.com";
 const int   AWS_IOT_PORT      = 8883;
 const char* AWS_IOT_CLIENT_ID = "meu_thing_name";
+
+// Certificados AWS: cole o PEM ou use caminhos no LittleFS
+// ("/certs/AmazonRootCA1.pem", "/certs/device.crt", "/certs/private.key")
 
 // Certificado raiz da Amazon (igual para todos os projetos AWS)
 const char AWS_CERT_CA[] PROGMEM = R"EOF(

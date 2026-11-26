@@ -24,24 +24,15 @@
  *   platform  = espressif32
  *   board     = esp32-s3-devkitm-1
  *   framework = arduino
- *   lib_deps  = https://github.com/professorThiago/ESP32Connectivity
+ *   board_build.filesystem = littlefs      ; certificados e portal no LittleFS
+ *   lib_deps  = https://github.com/professorThiago/ConectividadeESP32
  *
  * @author  professorThiago (https://github.com/professorThiago)
  * @license MIT
  */
 
-#include <Arduino.h>
+#include <ConectividadeESP32.h>
 #include "secrets.h"
-#include "DebugManager.h"
-
-// ── Tamanho da fila offline ───────────────────────────────────
-// Defina ANTES do #include <ESP32Connectivity.h>
-// Remova as linhas que não precisar alterar (os padrões serão usados)
-#define CONNECTIVITY_FILA_SLOTS       10   // número de mensagens  (padrão: 10)
-#define CONNECTIVITY_FILA_TOPICO_MAX  64   // bytes por tópico     (padrão: 64)
-#define CONNECTIVITY_FILA_PAYLOAD_MAX 256  // bytes por payload    (padrão: 256)
-
-#include <ESP32Connectivity.h>
 
 ConfigTopicos topicos = {
     TOPICOS_PUBLICAR, TOTAL_TOPICOS_PUBLICAR,
@@ -87,7 +78,11 @@ void loopAplicacao() {
 void setup() {
     configurarDebug(DEBUG_NIVEL_INICIAL, PINO_HABILITA_DEBUG_COMPLETO);
 
-    // conectividade.configurarBufferMQTT(1024);  // opcional: payloads > 256 bytes
+    // ── Opcionais (antes do begin) ───────────────────────────────────────────
+    // conectividade.configurarFila(10, 64, 256);      // slots, bytes tópico, bytes payload
+    // conectividade.configurarBufferMQTT(1024);       // payloads > 256 bytes
+    // conectividade.configurarStatus(TOPICOS_PUBLICAR[0]);   // online/offline com LWT
+    // conectividade.definirPortalAutomatico(true, "Config-ESP32");  // portal se o WiFi falhar
 
     conectividade.registrarCallbackWiFiConectado(aoConectarWiFi);
     conectividade.registrarCallbackWiFiDesconectado(aoDesconectarWiFi);
@@ -96,6 +91,9 @@ void setup() {
     conectividade.registrarCallbackMensagem(aoReceberMensagem);
 
     // ── Descomente APENAS UM dos três modos abaixo ───────────────────────────
+    // Dica: troque { WIFI_SSID, WIFI_SENHA } por WIFI_SALVO para usar a rede
+    // escolhida no portal. Os certificados podem ser caminhos no LittleFS,
+    // ex.: { "/certs/ca.pem" } — veja secrets.cpp.
 
     // MODO 1: sem criptografia (redes locais, porta 1883)
     conectividade.beginSimples(
@@ -141,4 +139,4 @@ void loop() {
 // build_flags =
 //     -DBOARD_HAS_PSRAM
 //     -DCONNECTIVITY_USAR_PSRAM=1
-//     -DCONNECTIVITY_FILA_SLOTS=200
+// e no setup(): conectividade.configurarFila(200);

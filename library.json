@@ -1,7 +1,7 @@
 {
   "name": "ConectividadeESP32",
-  "version": "3.0.0",
-  "description": "Gerenciamento não-bloqueante de WiFi e MQTT para ESP32. Reconexão automática, suporte a AWS IoT Core e fila de mensagens offline.",
+  "version": "4.0.0",
+  "description": "Gerenciamento não-bloqueante de WiFi e MQTT para ESP32 (API em português e inglês). Reconexão automática, TLS e AWS IoT Core com certificados no LittleFS, fila offline, credenciais no Preferences e portal de configuração WiFi (modo AP) com HTML personalizável.",
   "keywords": [
     "wifi",
     "mqtt",
@@ -9,8 +9,13 @@
     "iot",
     "esp32",
     "nao-bloqueante",
+    "non-blocking",
     "fila",
-    "offline"
+    "offline",
+    "littlefs",
+    "preferences",
+    "captive-portal",
+    "wifi-manager"
   ],
   "repository": {
     "type": "git",
@@ -44,7 +49,12 @@
   "export": {
     "include": [
       "src",
-      "examples"
+      "examples",
+      "README.md",
+      "CHANGELOG.md",
+      "LICENSE",
+      "library.json",
+      "library.properties"
     ]
   }
 }
