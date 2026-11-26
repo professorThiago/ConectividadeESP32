@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ConectividadeESP32 — Documentação</title>
+<meta name="description" content="WiFi + MQTT não-bloqueante para ESP32: portal de configuração, LittleFS, Preferences, fila offline e AWS IoT Core. Non-blocking WiFi + MQTT for ESP32.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e7c86'/%3E%3Cpath d='M8 20a11 11 0 0 1 16 0M11 23a6.5 6.5 0 0 1 10 0' stroke='%23fff' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='25.5' r='1.8' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --text:#1b2330; --soft:#5b6675; --line:#e3e7ed;
+  --accent:#0e7c86; --accent-soft:#e3f3f4; --warn:#b45309; --warn-soft:#fff4e0;
+  --danger:#b42318; --danger-soft:#fdecea; --ok:#15803d; --ok-soft:#e7f6ec;
+  --code-bg:#0f1720; --code-text:#e6edf3; --side:270px;
+  --mono:ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0d1117; --panel:#131a23; --text:#e6edf3; --soft:#9aa6b4; --line:#253040;
+    --accent:#3cc6cf; --accent-soft:#0f2a2e; --warn:#f5b041; --warn-soft:#2b2210;
+    --danger:#ff7b72; --danger-soft:#2d1414; --ok:#56d364; --ok-soft:#10261a; --code-bg:#0a0f15; }
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:72px}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+html[data-lang="pt"] .en, html[data-lang="en"] .pt{display:none !important}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:20;height:58px;display:flex;align-items:center;gap:14px;padding:0 20px;
+  background:color-mix(in srgb,var(--panel) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--text);text-decoration:none}
+.brand svg{width:28px;height:28px}
+.brand small{font-weight:500;color:var(--soft)}
+.spacer{flex:1}
+.langs{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.langs button{border:0;background:none;color:var(--soft);padding:6px 12px;font:600 13px system-ui;cursor:pointer}
+.langs button.on{background:var(--accent);color:#fff}
+.gh{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text);text-decoration:none;border:1px solid var(--line);padding:6px 10px;border-radius:8px}
+.menu{display:none;border:1px solid var(--line);background:none;color:var(--text);border-radius:8px;padding:6px 10px;cursor:pointer}
+
+/* layout */
+.wrap{display:grid;grid-template-columns:var(--side) minmax(0,1fr);max-width:1280px;margin:0 auto}
+nav.side{position:sticky;top:58px;height:calc(100vh - 58px);overflow:auto;padding:22px 14px 40px 20px;border-right:1px solid var(--line)}
+nav.side h4{margin:18px 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+nav.side a{display:block;padding:4px 10px;border-radius:6px;color:var(--text);text-decoration:none;font-size:14.5px}
+nav.side a:hover{background:var(--accent-soft)}
+nav.side a.ativo{background:var(--accent-soft);color:var(--accent);font-weight:600}
+main{padding:28px 44px 80px;min-width:0}
+section{max-width:860px;margin:0 0 56px}
+h1{font-size:2.3rem;line-height:1.15;margin:.2em 0 .3em}
+h2{font-size:1.65rem;margin:0 0 .5em;padding-top:8px;border-top:1px solid var(--line)}
+section:first-of-type h2{border-top:0}
+h3{font-size:1.18rem;margin:1.6em 0 .4em}
+p,li{color:var(--text)}
+.lead{font-size:1.15rem;color:var(--soft);max-width:720px}
+code{font-family:var(--mono);font-size:.88em;background:var(--accent-soft);padding:.1em .35em;border-radius:4px}
+pre code{background:none;padding:0;font-size:13.5px}
+
+/* hero */
+.hero{padding:26px 0 10px}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 20px}
+.badge{font:600 12px var(--mono);padding:4px 9px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--soft)}
+.badge b{color:var(--accent)}
+.cta{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+.btn{display:inline-block;padding:10px 16px;border-radius:9px;font-weight:600;text-decoration:none;border:1px solid var(--accent)}
+.btn.p{background:var(--accent);color:#fff}
+.btn.s{color:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin:20px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h5{margin:0 0 4px;font-size:15px}
+.card p{margin:0;font-size:14px;color:var(--soft)}
+.card .ic{font-size:20px}
+
+/* code */
+.code{position:relative;margin:14px 0 18px;border-radius:10px;background:var(--code-bg);border:1px solid #1f2a36;overflow:hidden}
+.code .tag{position:absolute;left:12px;top:8px;font:600 11px var(--mono);color:#7d8b99;text-transform:uppercase}
+.code pre{margin:0;padding:32px 16px 16px;overflow:auto;color:var(--code-text)}
+.copy{position:absolute;right:8px;top:6px;border:1px solid #2c3a48;background:#16202b;color:#c9d4df;border-radius:6px;font:12px system-ui;padding:3px 9px;cursor:pointer}
+.copy:hover{background:#1f2c3a}
+.t-c{color:#7d8b99;font-style:italic} .t-s{color:#a5d6ff} .t-k{color:#ff7b72} .t-t{color:#ffa657}
+.t-n{color:#79c0ff} .t-p{color:#d2a8ff} .t-f{color:#d2a8ff} .t-a{color:#7ee787}
+
+/* tables */
+.tbl{overflow:auto;margin:12px 0 18px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--accent-soft);font-size:13px}
+tr:last-child td{border-bottom:0}
+td code{overflow-wrap:anywhere}
+
+/* callouts */
+.box{border-radius:10px;padding:12px 16px;margin:14px 0;border-left:4px solid}
+.box p{margin:.3em 0}
+.box.info{background:var(--accent-soft);border-color:var(--accent)}
+.box.warn{background:var(--warn-soft);border-color:var(--warn)}
+.box.danger{background:var(--danger-soft);border-color:var(--danger)}
+.box.ok{background:var(--ok-soft);border-color:var(--ok)}
+.box strong:first-child{display:block;margin-bottom:2px}
+
+/* diagrams */
+.diagram{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0;overflow:auto}
+.diagram svg{display:block;max-width:100%;height:auto;margin:auto}
+.diagram text{font:13px system-ui;fill:var(--text)}
+.diagram .st{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+.diagram .ar{stroke:var(--soft);stroke-width:1.5;fill:none;marker-end:url(#seta)}
+.diagram .lb{font-size:11.5px;fill:var(--soft)}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding:0 0 12px 42px}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;
+  background:var(--accent);color:#fff;font:700 13px/28px system-ui;text-align:center}
+details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:10px 0}
+details summary{cursor:pointer;font-weight:600}
+footer{border-top:1px solid var(--line);padding:24px 44px;color:var(--soft);font-size:14px}
+
+@media (max-width:900px){
+  .wrap{grid-template-columns:1fr}
+  nav.side{position:fixed;left:0;top:58px;width:290px;background:var(--panel);z-index:15;transform:translateX(-100%);transition:transform .2s;box-shadow:0 10px 30px #0003}
+  nav.side.aberto{transform:none}
+  .menu{display:block}
+  main{padding:20px 18px 60px}
+  .gh span{display:none}
+  .brand small{display:none}
+}
+@media (max-width:480px){
+  .gh{display:none}
+  .langs{flex-shrink:0}
+  h1{font-size:1.8rem}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <button class="menu" id="menu" aria-label="Menu">☰</button>
+  <a class="brand" href="#inicio">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#0e7c86"/><path d="M8 20a11 11 0 0 1 16 0M11 23a6.5 6.5 0 0 1 10 0" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/><circle cx="16" cy="25.5" r="1.8" fill="#fff"/></svg>
+    ConectividadeESP32 <small>v4.0.0</small>
+  </a>
+  <div class="spacer"></div>
+  <div class="langs" role="group" aria-label="Idioma / Language">
+    <button data-set="pt">PT</button><button data-set="en">EN</button>
+  </div>
+  <a class="gh" href="https://github.com/professorThiago/ConectividadeESP32">
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>GitHub</span>
+  </a>
+</header>
+
+<div class="wrap">
+<nav class="side" id="side">
+  <h4><span class="pt">Começando</span><span class="en">Getting started</span></h4>
+  <a href="#inicio"><span class="pt">Visão geral</span><span class="en">Overview</span></a>
+  <a href="#instalacao"><span class="pt">Instalação</span><span class="en">Installation</span></a>
+  <a href="#rapido"><span class="pt">Início rápido</span><span class="en">Quick start</span></a>
+  <a href="#conceitos"><span class="pt">Como funciona</span><span class="en">How it works</span></a>
+  <h4><span class="pt">Guias</span><span class="en">Guides</span></h4>
+  <a href="#modos"><span class="pt">Modos de conexão</span><span class="en">Connection modes</span></a>
+  <a href="#structs"><span class="pt">Structs de configuração</span><span class="en">Config structs</span></a>
+  <a href="#littlefs"><span class="pt">Certificados no LittleFS</span><span class="en">Certificates in LittleFS</span></a>
+  <a href="#portal"><span class="pt">Portal WiFi</span><span class="en">WiFi portal</span></a>
+  <a href="#portal-html"><span class="pt">Personalizar o portal</span><span class="en">Customizing the portal</span></a>
+  <a href="#preferences"><span class="pt">Preferences (NVS)</span><span class="en">Preferences (NVS)</span></a>
+  <a href="#mqtt"><span class="pt">Publicar e receber</span><span class="en">Publish &amp; subscribe</span></a>
+  <a href="#fila"><span class="pt">Fila offline</span><span class="en">Offline queue</span></a>
+  <a href="#aws"><span class="pt">AWS IoT Core</span><span class="en">AWS IoT Core</span></a>
+  <h4><span class="pt">Referência</span><span class="en">Reference</span></h4>
+  <a href="#api"><span class="pt">API completa (PT ↔ EN)</span><span class="en">Full API (PT ↔ EN)</span></a>
+  <a href="#build"><span class="pt">Opções de compilação</span><span class="en">Build options</span></a>
+  <a href="#debug">Debug</a>
+  <a href="#exemplos"><span class="pt">Exemplos</span><span class="en">Examples</span></a>
+  <a href="#problemas"><span class="pt">Solução de problemas</span><span class="en">Troubleshooting</span></a>
+  <a href="#v3"><span class="pt">Migrando da v3</span><span class="en">Migrating from v3</span></a>
+</nav>
+
+<main>
+
+<!-- ================================================================ -->
+<section id="inicio" class="hero">
+  <h1>ConectividadeESP32</h1>
+  <p class="lead pt">WiFi e MQTT para ESP32 <strong>sem travar o seu <code>loop()</code></strong>. Reconecta sozinha, guarda as mensagens enquanto está offline, conecta na AWS com certificados no LittleFS e tem um portal para escolher a rede WiFi pelo celular.</p>
+  <p class="lead en">WiFi and MQTT for the ESP32 <strong>without blocking your <code>loop()</code></strong>. It reconnects on its own, queues messages while offline, connects to AWS with certificates stored in LittleFS and ships a portal to pick the WiFi network from your phone.</p>
+  <div class="badges">
+    <span class="badge">version <b>4.0.0</b></span>
+    <span class="badge">license <b>MIT</b></span>
+    <span class="badge">platform <b>espressif32</b></span>
+    <span class="badge">framework <b>arduino</b></span>
+    <span class="badge">API <b>PT + EN</b></span>
+  </div>
+  <div class="cta">
+    <a class="btn p" href="#rapido"><span class="pt">Começar agora</span><span class="en">Get started</span></a>
+    <a class="btn s" href="https://github.com/professorThiago/ConectividadeESP32"><span class="pt">Ver no GitHub</span><span class="en">View on GitHub</span></a>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="ic">⏱️</div><h5><span class="pt">Não-bloqueante</span><span class="en">Non-blocking</span></h5><p class="pt">Máquinas de estado no <code>update()</code>. Sem <code>while</code> esperando a rede.</p><p class="en">State machines inside <code>update()</code>. No <code>while</code> waiting for the network.</p></div>
+    <div class="card"><div class="ic">🔁</div><h5><span class="pt">Reconexão automática</span><span class="en">Auto-reconnect</span></h5><p class="pt">WiFi e MQTT voltam sozinhos, com pausas para não sobrecarregar o broker.</p><p class="en">WiFi and MQTT come back by themselves, with back-off to spare the broker.</p></div>
+    <div class="card"><div class="ic">📶</div><h5><span class="pt">Portal de configuração</span><span class="en">Config portal</span></h5><p class="pt">Modo AP + captive portal com HTML personalizável no LittleFS.</p><p class="en">AP mode + captive portal with a customizable HTML page in LittleFS.</p></div>
+    <div class="card"><div class="ic">🔐</div><h5>TLS &amp; AWS IoT Core</h5><p class="pt">Três modos: SIMPLES, TLS e AWS (mTLS). Certificados lidos do LittleFS.</p><p class="en">Three modes: PLAIN, TLS and AWS (mTLS). Certificates read from LittleFS.</p></div>
+    <div class="card"><div class="ic">📦</div><h5><span class="pt">Fila offline</span><span class="en">Offline queue</span></h5><p class="pt">Guarda mensagens sem conexão e envia em ordem. Três políticas.</p><p class="en">Stores messages while disconnected and sends them in order. Three policies.</p></div>
+    <div class="card"><div class="ic">💾</div><h5>Preferences (NVS)</h5><p class="pt">Credenciais e valores do seu projeto em namespace próprio.</p><p class="en">Credentials and your own values in a dedicated namespace.</p></div>
+    <div class="card"><div class="ic">🪦</div><h5>Last Will</h5><p class="pt">Status <code>online</code>/<code>offline</code> publicado pelo broker.</p><p class="en"><code>online</code>/<code>offline</code> status published by the broker.</p></div>
+    <div class="card"><div class="ic">🌎</div><h5><span class="pt">Português e inglês</span><span class="en">Portuguese &amp; English</span></h5><p class="pt">Cada função tem os dois nomes, e os dois chamam o mesmo código.</p><p class="en">Every function has both names, and both call the same code.</p></div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="instalacao">
+  <h2><span class="pt">Instalação</span><span class="en">Installation</span></h2>
+
+  <h3>PlatformIO</h3>
+  <p class="pt">Adicione ao seu <code>platformio.ini</code>. O PlatformIO baixa também o <strong>PubSubClient</strong> e o <strong>DebugManager</strong>.</p>
+  <p class="en">Add it to your <code>platformio.ini</code>. PlatformIO also downloads <strong>PubSubClient</strong> and <strong>DebugManager</strong>.</p>
+<div class="code"><span class="tag">ini</span><button class="copy" type="button">Copiar</button><pre><code data-lang="ini">[env:esp32dev]
+platform  = espressif32
+board     = esp32dev
+framework = arduino
+monitor_speed = 115200
+board_build.filesystem = littlefs      ; certificates + portal page
+
+lib_deps =
+    https://github.com/professorThiago/ConectividadeESP32.git#v4.0.0</code></pre></div>
+  <div class="box info pt"><strong>Dica</strong><p>O sufixo <code>#v4.0.0</code> fixa a versão. Sem ele, você recebe sempre a versão mais recente da branch principal.</p></div>
+  <div class="box info en"><strong>Tip</strong><p>The <code>#v4.0.0</code> suffix pins the version. Without it you always get the latest commit of the main branch.</p></div>
+
+  <h3>Arduino IDE</h3>
+  <ol class="steps">
+    <li class="pt">Instale o <strong>PubSubClient</strong> (Nick O'Leary) pelo Gerenciador de Bibliotecas.</li>
+    <li class="en">Install <strong>PubSubClient</strong> (Nick O'Leary) from the Library Manager.</li>
+    <li class="pt">Baixe o ZIP do <a href="https://github.com/professorThiago/DebugManager">DebugManager</a> e desta biblioteca e adicione em <em>Sketch → Incluir Biblioteca → Adicionar biblioteca .ZIP</em>.</li>
+    <li class="en">Download the ZIP of <a href="https://github.com/professorThiago/DebugManager">DebugManager</a> and of this library and add them via <em>Sketch → Include Library → Add .ZIP Library</em>.</li>
+    <li class="pt">Para enviar arquivos ao LittleFS, instale o plugin <a href="https://github.com/earlephilhower/arduino-littlefs-upload">arduino-littlefs-upload</a>. Os arquivos ficam na pasta <code>data/</code> do sketch.</li>
+    <li class="en">To upload files to LittleFS, install the <a href="https://github.com/earlephilhower/arduino-littlefs-upload">arduino-littlefs-upload</a> plugin. Files go in the sketch's <code>data/</code> folder.</li>
+  </ol>
+
+  <h3><span class="pt">Requisitos</span><span class="en">Requirements</span></h3>
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Item</span><span class="en">Item</span></th><th><span class="pt">Detalhe</span><span class="en">Details</span></th></tr>
+    <tr><td>Hardware</td><td>ESP32, ESP32-S2, ESP32-S3, ESP32-C3</td></tr>
+    <tr><td>Core</td><td>Arduino-ESP32 2.x / 3.x</td></tr>
+    <tr><td><span class="pt">Dependências</span><span class="en">Dependencies</span></td><td>PubSubClient ≥ 2.8, DebugManager</td></tr>
+    <tr><td><span class="pt">Bibliotecas do core usadas</span><span class="en">Core libraries used</span></td><td>WiFi, WiFiClientSecure, WebServer, DNSServer, Preferences, LittleFS</td></tr>
+  </table></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="rapido">
+  <h2><span class="pt">Início rápido</span><span class="en">Quick start</span></h2>
+  <p class="pt">Um ESP32 que conecta no WiFi, publica a cada 5 segundos e recebe comandos — sem nenhum <code>delay()</code>.</p>
+  <p class="en">An ESP32 that joins WiFi, publishes every 5 seconds and receives commands — without a single <code>delay()</code>.</p>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">#include &lt;ConectividadeESP32.h&gt;
+
+const char* TOPICOS_PUB[] = { "casa/sala/temperatura" };   // índice 0
+const char* TOPICOS_REC[] = { "casa/sala/comando" };       // índice 0
+ConfigTopicos topicos = { TOPICOS_PUB, 1, TOPICOS_REC, 1 };
+
+uint32_t ultimoEnvio = 0;
+
+void setup() {
+    configurarDebug(DEBUG_INFO);
+
+    conectividade.registrarCallbackMensagem([](const char* topico, const String&amp; msg) {
+        debugInfo(String(topico) + " = " + msg);
+    });
+
+    conectividade.beginSimples(
+        { "MinhaRede", "minha_senha" },                     // WiFi
+        { "192.168.0.10", 1883, "esp32_sala", "", "" },     // broker, porta, clientId, usuário, senha
+        topicos);
+}
+
+void loop() {
+    conectividade.update();                                 // SEMPRE no loop()
+
+    if (millis() - ultimoEnvio &gt;= 5000) {
+        ultimoEnvio = millis();
+        conectividade.publicar(0, String(temperatureRead(), 1));
+    }
+}</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">#include &lt;ConectividadeESP32.h&gt;
+
+const char* PUB_TOPICS[] = { "home/room/temperature" };   // index 0
+const char* SUB_TOPICS[] = { "home/room/command" };       // index 0
+TopicsConfig topics = { PUB_TOPICS, 1, SUB_TOPICS, 1 };
+
+uint32_t lastSend = 0;
+
+void setup() {
+    configurarDebug(DEBUG_INFO);
+
+    connectivity.onMessage([](const char* topic, const String&amp; msg) {
+        debugInfo(String(topic) + " = " + msg);
+    });
+
+    connectivity.beginSimple(
+        { "MyNetwork", "my_password" },                    // WiFi
+        { "192.168.0.10", 1883, "esp32_room", "", "" },    // broker, port, clientId, user, password
+        topics);
+}
+
+void loop() {
+    connectivity.update();                                 // ALWAYS in loop()
+
+    if (millis() - lastSend &gt;= 5000) {
+        lastSend = millis();
+        connectivity.publish(0, String(temperatureRead(), 1));
+    }
+}</code></pre></div>
+</div>
+  <div class="box warn pt"><strong>Regra de ouro</strong><p>Chame <code>conectividade.update()</code> em <strong>todo</strong> <code>loop()</code>. É ele que avança o WiFi, o MQTT, o portal e a fila. Evite <code>delay()</code> longos no loop.</p></div>
+  <div class="box warn en"><strong>Golden rule</strong><p>Call <code>connectivity.update()</code> on <strong>every</strong> <code>loop()</code>. It drives WiFi, MQTT, the portal and the queue. Avoid long <code>delay()</code> calls in the loop.</p></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="conceitos">
+  <h2><span class="pt">Como funciona</span><span class="en">How it works</span></h2>
+  <p class="pt">O código "tradicional" usa <code>while (WiFi.status() != WL_CONNECTED) delay(500);</code> e fica <strong>preso</strong> enquanto não há rede: nenhum sensor é lido e nenhum botão responde. Esta biblioteca usa <strong>máquinas de estado</strong>: a cada <code>update()</code> ela verifica a situação, dá um passo e devolve o controle para o seu programa.</p>
+  <p class="en">"Traditional" code uses <code>while (WiFi.status() != WL_CONNECTED) delay(500);</code> and gets <strong>stuck</strong> while there is no network: no sensor is read and no button responds. This library uses <strong>state machines</strong>: on every <code>update()</code> it checks the situation, takes one step and hands control back to your program.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 760 360" role="img" aria-label="WiFi and MQTT state machines">
+      <defs><marker id="seta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7d8b99"/></marker></defs>
+      <text x="10" y="22" font-weight="700">WiFi</text>
+      <rect class="st" x="10" y="36" width="160" height="40" rx="8"/><text x="90" y="61" text-anchor="middle"><tspan class="pt">DESCONECTADO</tspan><tspan class="en">DISCONNECTED</tspan></text>
+      <rect class="st" x="300" y="36" width="160" height="40" rx="8"/><text x="380" y="61" text-anchor="middle"><tspan class="pt">CONECTANDO</tspan><tspan class="en">CONNECTING</tspan></text>
+      <rect class="st" x="590" y="36" width="160" height="40" rx="8"/><text x="670" y="61" text-anchor="middle"><tspan class="pt">CONECTADO</tspan><tspan class="en">CONNECTED</tspan></text>
+      <path class="ar" d="M170 56H298"/><text class="lb" x="234" y="48" text-anchor="middle">begin() / 5 s</text>
+      <path class="ar" d="M460 56H588"/><text class="lb" x="524" y="48" text-anchor="middle">OK</text>
+      <path class="ar" d="M380 76C380 118 120 118 120 79"/><text class="lb" x="250" y="128" text-anchor="middle">timeout 15 s</text>
+      <path class="ar" d="M670 76C670 170 60 170 60 79"/><text class="lb" x="365" y="164" text-anchor="middle"><tspan class="pt">sinal caiu</tspan><tspan class="en">signal lost</tspan></text>
+      <text x="10" y="210" font-weight="700">MQTT</text>
+      <rect class="st" x="10" y="224" width="160" height="40" rx="8"/><text x="90" y="249" text-anchor="middle"><tspan class="pt">DESCONECTADO</tspan><tspan class="en">DISCONNECTED</tspan></text>
+      <rect class="st" x="300" y="224" width="160" height="40" rx="8"/><text x="380" y="249" text-anchor="middle"><tspan class="pt">CONECTANDO</tspan><tspan class="en">CONNECTING</tspan></text>
+      <rect class="st" x="590" y="224" width="160" height="40" rx="8"/><text x="670" y="249" text-anchor="middle"><tspan class="pt">CONECTADO</tspan><tspan class="en">CONNECTED</tspan></text>
+      <path class="ar" d="M170 244H298"/><text class="lb" x="234" y="236" text-anchor="middle">WiFi OK / 5 s</text>
+      <path class="ar" d="M460 244H588"/><text class="lb" x="524" y="236" text-anchor="middle">OK</text>
+      <path class="ar" d="M380 264C380 300 120 300 120 267"/><text class="lb" x="250" y="306" text-anchor="middle"><tspan class="pt">falha (5× → pausa 30 s)</tspan><tspan class="en">failure (5× → 30 s pause)</tspan></text>
+      <path class="ar" d="M670 264C670 352 60 352 60 267"/><text class="lb" x="365" y="348" text-anchor="middle"><tspan class="pt">broker caiu</tspan><tspan class="en">broker lost</tspan></text>
+    </svg>
+  </div>
+
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Tempo</span><span class="en">Timing</span></th><th><span class="pt">Valor</span><span class="en">Value</span></th></tr>
+    <tr><td><span class="pt">Timeout de conexão WiFi</span><span class="en">WiFi connect timeout</span></td><td>15 s</td></tr>
+    <tr><td><span class="pt">Intervalo entre tentativas de WiFi</span><span class="en">WiFi retry interval</span></td><td>5 s</td></tr>
+    <tr><td><span class="pt">Intervalo entre tentativas de MQTT</span><span class="en">MQTT retry interval</span></td><td>5 s</td></tr>
+    <tr><td><span class="pt">Pausa após 5 falhas de MQTT</span><span class="en">Pause after 5 MQTT failures</span></td><td>30 s</td></tr>
+    <tr><td><span class="pt">Timeout do handshake TLS / socket</span><span class="en">TLS handshake / socket timeout</span></td><td>8 s / 5 s</td></tr>
+  </table></div>
+  <div class="box info pt"><strong>Um detalhe honesto</strong><p>O <code>connect()</code> do PubSubClient bloqueia durante o handshake (1–3 s em TLS). A biblioteca limita esse tempo, mas se o seu loop tem tempo crítico, leve isso em conta.</p></div>
+  <div class="box info en"><strong>An honest caveat</strong><p>PubSubClient's <code>connect()</code> blocks during the handshake (1–3 s with TLS). The library caps that time, but take it into account if your loop is time-critical.</p></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="modos">
+  <h2><span class="pt">Modos de conexão</span><span class="en">Connection modes</span></h2>
+  <p class="pt">O modo é escolhido pela função <code>begin</code> que você chama. Use só uma.</p>
+  <p class="en">The mode is chosen by the <code>begin</code> function you call. Use only one.</p>
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Função</span><span class="en">Function</span></th><th><span class="pt">Porta</span><span class="en">Port</span></th><th><span class="pt">Quando usar</span><span class="en">When to use</span></th></tr>
+    <tr><td><code>beginSomenteWiFi</code> / <code>beginWiFiOnly</code></td><td>—</td><td><span class="pt">Só WiFi, sem MQTT</span><span class="en">WiFi only, no MQTT</span></td></tr>
+    <tr><td><code>beginSimples</code> / <code>beginSimple</code></td><td>1883</td><td><span class="pt">Broker local, rede confiável, testes</span><span class="en">Local broker, trusted network, testing</span></td></tr>
+    <tr><td><code>beginTLS</code></td><td>8883</td><td><span class="pt">Brokers públicos (HiveMQ, Mosquitto, EMQX...)</span><span class="en">Public brokers (HiveMQ, Mosquitto, EMQX...)</span></td></tr>
+    <tr><td><code>beginAWS</code></td><td>8883</td><td><span class="pt">AWS IoT Core com certificado de dispositivo (mTLS)</span><span class="en">AWS IoT Core with a device certificate (mTLS)</span></td></tr>
+  </table></div>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">// Só WiFi
+conectividade.beginSomenteWiFi({ "Rede", "senha" });
+
+// MQTT sem criptografia
+conectividade.beginSimples(wifi, { "192.168.0.10", 1883, "esp32_id", "", "" }, topicos);
+
+// MQTT com TLS — certificado CA em arquivo do LittleFS
+conectividade.beginTLS(wifi,
+                       { "broker.hivemq.com", 8883, "esp32_id", "usuario", "senha" },
+                       { "/certs/ca.pem" },
+                       topicos);
+
+// AWS IoT Core — os três certificados no LittleFS
+conectividade.beginAWS(wifi,
+    { "xxxx-ats.iot.us-east-1.amazonaws.com", 8883, "meu_thing",
+      "/certs/AmazonRootCA1.pem", "/certs/device.crt", "/certs/private.key" },
+    topicos);</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">// WiFi only
+connectivity.beginWiFiOnly({ "Network", "password" });
+
+// Plain MQTT
+connectivity.beginSimple(wifi, { "192.168.0.10", 1883, "esp32_id", "", "" }, topics);
+
+// MQTT over TLS — CA certificate as a LittleFS file
+connectivity.beginTLS(wifi,
+                      { "broker.hivemq.com", 8883, "esp32_id", "user", "pass" },
+                      { "/certs/ca.pem" },
+                      topics);
+
+// AWS IoT Core — all three certificates in LittleFS
+connectivity.beginAWS(wifi,
+    { "xxxx-ats.iot.us-east-1.amazonaws.com", 8883, "my_thing",
+      "/certs/AmazonRootCA1.pem", "/certs/device.crt", "/certs/private.key" },
+    topics);</code></pre></div>
+</div>
+  <div class="box ok pt"><strong>Use a rede salva</strong><p>No lugar de <code>{ "Rede", "senha" }</code>, passe <code>WIFI_SALVO</code>: a biblioteca usa a rede gravada no Preferences e, se não houver nenhuma, abre o <a href="#portal">portal de configuração</a>.</p></div>
+  <div class="box ok en"><strong>Use the saved network</strong><p>Instead of <code>{ "Network", "password" }</code>, pass <code>SAVED_WIFI</code>: the library uses the network stored in Preferences and, if there is none, opens the <a href="#portal">configuration portal</a>.</p></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="structs">
+  <h2><span class="pt">Structs de configuração</span><span class="en">Configuration structs</span></h2>
+  <p class="pt">Todas aceitam inicialização por chaves, na ordem dos campos. Campos com dois nomes (ex.: <code>senha</code> / <code>password</code>) são <strong>o mesmo campo</strong>. A biblioteca <strong>copia</strong> os textos, então você pode passar <code>String.c_str()</code> ou variáveis locais. Só os arrays de tópicos precisam ser globais.</p>
+  <p class="en">All of them accept brace initialization in field order. Fields with two names (e.g. <code>senha</code> / <code>password</code>) are <strong>the same field</strong>. The library <strong>copies</strong> the strings, so you may pass <code>String.c_str()</code> or local variables. Only the topic arrays must be global.</p>
+
+  <div class="tbl"><table>
+    <tr><th>Struct (PT / EN)</th><th><span class="pt">Campos, na ordem</span><span class="en">Fields, in order</span></th></tr>
+    <tr><td><code>ConfigWiFi</code> / <code>WiFiConfig</code></td><td><code>ssid</code>, <code>senha</code> | <code>password</code></td></tr>
+    <tr><td><code>ConfigMQTT</code> / <code>MQTTConfig</code></td><td><code>broker</code>, <code>porta</code> | <code>port</code>, <code>clientId</code>, <code>usuario</code> | <code>username</code>, <code>senha</code> | <code>password</code></td></tr>
+    <tr><td><code>ConfigTLS</code> / <code>TLSConfig</code></td><td><code>certificadoCA</code> | <code>caCert</code></td></tr>
+    <tr><td><code>ConfigAWS</code> / <code>AWSConfig</code></td><td><code>endpoint</code>, <code>porta</code> | <code>port</code>, <code>clientId</code>, <code>certCA</code>, <code>certCRT</code>, <code>certPrivate</code></td></tr>
+    <tr><td><code>ConfigTopicos</code> / <code>TopicsConfig</code></td><td><code>publicar</code> | <code>publish</code>, <code>nPublicar</code> | <code>publishCount</code>, <code>receber</code> | <code>subscribe</code>, <code>nReceber</code> | <code>subscribeCount</code></td></tr>
+  </table></div>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">// Por chaves (ordem dos campos)
+ConfigMQTT mqtt = { "broker.exemplo.com", 8883, "esp32_id", "", "" };
+
+// Ou campo a campo
+ConfigMQTT outro = {};
+outro.broker   = "broker.exemplo.com";
+outro.porta    = 8883;
+outro.clientId = "esp32_id";
+
+// Tópicos: arrays GLOBAIS + quantidade
+const char* pub[] = { "projeto/status", "projeto/dados" };
+const char* rec[] = { "projeto/comando" };
+ConfigTopicos topicos = { pub, 2, rec, 1 };</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">// Brace initialization (field order)
+MQTTConfig mqtt = { "broker.example.com", 8883, "esp32_id", "", "" };
+
+// Or field by field
+MQTTConfig other = {};
+other.broker   = "broker.example.com";
+other.port     = 8883;
+other.clientId = "esp32_id";
+
+// Topics: GLOBAL arrays + count
+const char* pub[] = { "project/status", "project/data" };
+const char* sub[] = { "project/command" };
+TopicsConfig topics = { pub, 2, sub, 1 };</code></pre></div>
+</div>
+  <div class="box warn pt"><strong>Client ID único</strong><p>Dois dispositivos com o mesmo <code>clientId</code> no mesmo broker ficam derrubando um ao outro. Se deixar vazio, a biblioteca usa <code>ESP32-XXXX</code> (final do MAC).</p></div>
+  <div class="box warn en"><strong>Unique client ID</strong><p>Two devices with the same <code>clientId</code> on the same broker keep kicking each other off. If you leave it empty, the library uses <code>ESP32-XXXX</code> (end of the MAC).</p></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="littlefs">
+  <h2><span class="pt">Certificados no LittleFS</span><span class="en">Certificates in LittleFS</span></h2>
+  <p class="pt">O <strong>LittleFS</strong> é um sistema de arquivos na flash do ESP32, como um pequeno pendrive. Você coloca os arquivos na pasta <code>data/</code> do projeto e grava todos de uma vez. Nos campos de certificado, basta passar o <strong>caminho</strong>: a biblioteca abre e lê o arquivo.</p>
+  <p class="en"><strong>LittleFS</strong> is a file system on the ESP32 flash, like a tiny USB stick. You put the files in the project's <code>data/</code> folder and upload them all at once. In the certificate fields, just pass the <strong>path</strong>: the library opens and reads the file.</p>
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Valor passado</span><span class="en">Value passed</span></th><th><span class="pt">Exemplo</span><span class="en">Example</span></th><th><span class="pt">Resultado</span><span class="en">Result</span></th></tr>
+    <tr><td><span class="pt">Caminho (começa com <code>/</code>)</span><span class="en">Path (starts with <code>/</code>)</span></td><td><code>"/certs/ca.pem"</code></td><td><span class="pt">Lido do LittleFS no <code>begin()</code></span><span class="en">Read from LittleFS during <code>begin()</code></span></td></tr>
+    <tr><td><span class="pt">Conteúdo PEM</span><span class="en">PEM content</span></td><td><code>R"EOF(-----BEGIN...)EOF"</code></td><td><span class="pt">Usado direto da flash</span><span class="en">Used directly from flash</span></td></tr>
+    <tr><td><span class="pt">Vazio / <code>nullptr</code></span><span class="en">Empty / <code>nullptr</code></span></td><td><code>""</code></td><td><span class="pt">TLS sem verificação (<code>setInsecure</code>) — só testes</span><span class="en">TLS without verification (<code>setInsecure</code>) — testing only</span></td></tr>
+  </table></div>
+
+  <h3><span class="pt">Estrutura do projeto</span><span class="en">Project layout</span></h3>
+<div class="code"><span class="tag">text</span><button class="copy" type="button">Copiar</button><pre><code data-lang="text">my_project/
+├── platformio.ini            ← board_build.filesystem = littlefs
+├── .gitignore                ← data/certs/*.key
+├── data/
+│   ├── certs/
+│   │   ├── ca.pem
+│   │   ├── AmazonRootCA1.pem
+│   │   ├── device.crt
+│   │   └── private.key       ← NEVER commit / NUNCA suba no GitHub
+│   └── portal/
+│       └── index.html        ← optional / opcional
+└── src/
+    └── main.cpp</code></pre></div>
+  <h3><span class="pt">Enviando os arquivos</span><span class="en">Uploading the files</span></h3>
+<div class="code"><span class="tag">bash</span><button class="copy" type="button">Copiar</button><pre><code data-lang="bash">pio run -t uploadfs        # PlatformIO: "Upload Filesystem Image"</code></pre></div>
+  <div class="box danger pt"><strong>O upload substitui tudo</strong><p>O <em>Upload Filesystem Image</em> troca o LittleFS inteiro pelo conteúdo de <code>data/</code>. Arquivos que não estão em <code>data/</code> são apagados do ESP32. Gravar o firmware (Upload) <strong>não</strong> mexe no LittleFS.</p></div>
+  <div class="box danger en"><strong>Uploading replaces everything</strong><p><em>Upload Filesystem Image</em> replaces the whole LittleFS with the contents of <code>data/</code>. Files not in <code>data/</code> are deleted from the ESP32. Flashing the firmware (Upload) does <strong>not</strong> touch LittleFS.</p></div>
+
+  <h3><span class="pt">Funções de arquivo</span><span class="en">File functions</span></h3>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">conectividade.iniciarLittleFS();                     // monta (a biblioteca chama sozinha quando precisa)
+String texto = conectividade.lerArquivo("/config.json");   // "" se não existir</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">connectivity.beginLittleFS();                        // mount (the library does it when needed)
+String text = connectivity.readFile("/config.json"); // "" if it does not exist</code></pre></div>
+</div>
+  <p class="pt">Se o seu código já chamou <code>LittleFS.begin()</code>, não há conflito: a biblioteca só monta se ainda não estiver montado. Por segurança, ela <strong>não formata</strong> o LittleFS automaticamente.</p>
+  <p class="en">If your code already called <code>LittleFS.begin()</code> there is no conflict: the library only mounts it if needed. For safety it <strong>never formats</strong> LittleFS automatically.</p>
+</section>
+
+<!-- ================================================================ -->
+<section id="portal">
+  <h2><span class="pt">Portal de configuração WiFi</span><span class="en">WiFi configuration portal</span></h2>
+  <p class="pt">O ESP32 cria uma rede própria (modo AP). Ao conectar o celular nela, a página de configuração abre sozinha (<em>captive portal</em>) — ou acesse <code>http://192.168.4.1</code>. A página lista as redes, você escolhe, digita a senha e salva. As credenciais vão para o Preferences e o ESP32 conecta.</p>
+  <p class="en">The ESP32 creates its own network (AP mode). When your phone joins it, the configuration page opens by itself (<em>captive portal</em>) — or browse to <code>http://192.168.4.1</code>. The page lists networks; you pick one, type the password and save. Credentials go to Preferences and the ESP32 connects.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 60 760 140" role="img" aria-label="Portal flow">
+      <defs><marker id="seta2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7d8b99"/></marker></defs>
+      <g>
+        <rect class="st" x="10"  y="70" width="130" height="58" rx="10"/>
+        <text x="75" y="95" text-anchor="middle"><tspan class="pt">Sem rede salva</tspan><tspan class="en">No saved WiFi</tspan></text>
+        <text x="75" y="114" text-anchor="middle" class="lb"><tspan class="pt">ou 3 falhas / botão</tspan><tspan class="en">or 3 failures / button</tspan></text>
+        <rect class="st" x="165" y="70" width="130" height="58" rx="10"/>
+        <text x="230" y="95" text-anchor="middle"><tspan class="pt">ESP32 abre</tspan><tspan class="en">ESP32 opens</tspan></text>
+        <text x="230" y="114" text-anchor="middle" class="lb"><tspan class="pt">AP + página</tspan><tspan class="en">AP + page</tspan></text>
+        <rect class="st" x="320" y="70" width="130" height="58" rx="10"/>
+        <text x="385" y="95" text-anchor="middle"><tspan class="pt">Celular escolhe</tspan><tspan class="en">Phone picks</tspan></text>
+        <text x="385" y="114" text-anchor="middle" class="lb"><tspan class="pt">rede + senha</tspan><tspan class="en">network + password</tspan></text>
+        <rect class="st" x="475" y="70" width="130" height="58" rx="10"/>
+        <text x="540" y="95" text-anchor="middle"><tspan class="pt">Salva no</tspan><tspan class="en">Saved to</tspan></text>
+        <text x="540" y="114" text-anchor="middle" class="lb">Preferences</text>
+        <rect class="st" x="630" y="70" width="120" height="58" rx="10"/>
+        <text x="690" y="95" text-anchor="middle"><tspan class="pt">Fecha AP e</tspan><tspan class="en">Closes AP,</tspan></text>
+        <text x="690" y="114" text-anchor="middle" class="lb"><tspan class="pt">conecta</tspan><tspan class="en">connects</tspan></text>
+        <path d="M140 99H163" stroke="#7d8b99" stroke-width="1.5" marker-end="url(#seta2)"/>
+        <path d="M295 99H318" stroke="#7d8b99" stroke-width="1.5" marker-end="url(#seta2)"/>
+        <path d="M450 99H473" stroke="#7d8b99" stroke-width="1.5" marker-end="url(#seta2)"/>
+        <path d="M605 99H628" stroke="#7d8b99" stroke-width="1.5" marker-end="url(#seta2)"/>
+        <path d="M690 128C690 168 75 168 75 131" stroke="#7d8b99" stroke-width="1.5" fill="none" stroke-dasharray="5 4" marker-end="url(#seta2)"/>
+        <text x="382" y="190" text-anchor="middle" class="lb"><tspan class="pt">senha errada → portal volta após N falhas</tspan><tspan class="en">wrong password → portal returns after N failures</tspan></text>
+      </g>
+    </svg>
+  </div>
+
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">#include &lt;ConectividadeESP32.h&gt;
+
+const int PINO_BOTAO = 0;      // BOOT
+uint32_t botaoDesde = 0;
+
+void setup() {
+    configurarDebug(DEBUG_INFO);
+    pinMode(PINO_BOTAO, INPUT_PULLUP);
+
+    // Abre o portal sozinho após 3 falhas seguidas com a rede salva
+    conectividade.definirPortalAutomatico(true, "Config-Sala", nullptr, 3);
+
+    conectividade.registrarCallbackPortalSalvo([](const String&amp; ssid) {
+        debugInfo("Rede escolhida: " + ssid);
+    });
+
+    // WIFI_SALVO: usa a rede salva; sem nenhuma, abre o portal
+    conectividade.beginSomenteWiFi(WIFI_SALVO);
+}
+
+void loop() {
+    conectividade.update();    // também atende o portal
+
+    // BOOT pressionado por 3 s → portal (fecha após 5 min sem uso)
+    if (digitalRead(PINO_BOTAO) == LOW) {
+        if (botaoDesde == 0) botaoDesde = millis();
+        if (millis() - botaoDesde &gt; 3000 &amp;&amp; !conectividade.portalAtivo())
+            conectividade.iniciarPortalConfiguracao("Config-Sala", nullptr, 300);
+    } else {
+        botaoDesde = 0;
+    }
+}</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">#include &lt;ConectividadeESP32.h&gt;
+
+const int BUTTON_PIN = 0;      // BOOT
+uint32_t pressedSince = 0;
+
+void setup() {
+    configurarDebug(DEBUG_INFO);
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+    // Open the portal by itself after 3 consecutive failures with the saved network
+    connectivity.setAutoConfigPortal(true, "Room-Setup", nullptr, 3);
+
+    connectivity.onPortalSaved([](const String&amp; ssid) {
+        debugInfo("Network chosen: " + ssid);
+    });
+
+    // SAVED_WIFI: use the saved network; if there is none, open the portal
+    connectivity.beginWiFiOnly(SAVED_WIFI);
+}
+
+void loop() {
+    connectivity.update();     // also serves the portal
+
+    // BOOT held for 3 s → portal (closes after 5 min idle)
+    if (digitalRead(BUTTON_PIN) == LOW) {
+        if (pressedSince == 0) pressedSince = millis();
+        if (millis() - pressedSince &gt; 3000 &amp;&amp; !connectivity.isConfigPortalActive())
+            connectivity.startConfigPortal("Room-Setup", nullptr, 300);
+    } else {
+        pressedSince = 0;
+    }
+}</code></pre></div>
+</div>
+
+  <h3><span class="pt">Funções do portal</span><span class="en">Portal functions</span></h3>
+  <div class="tbl"><table>
+    <tr><th>PT</th><th>EN</th><th><span class="pt">Descrição</span><span class="en">Description</span></th></tr>
+    <tr><td><code>iniciarPortalConfiguracao(nome, senha, timeoutSeg)</code></td><td><code>startConfigPortal(name, pass, timeoutSec)</code></td><td><span class="pt">Abre o portal. <code>nome = nullptr</code> → <code>ESP32-XXXX</code>. Senha com 8+ caracteres ou <code>nullptr</code> (rede aberta). <code>timeoutSeg = 0</code> → nunca fecha sozinho.</span><span class="en">Opens the portal. <code>name = nullptr</code> → <code>ESP32-XXXX</code>. Password with 8+ characters or <code>nullptr</code> (open network). <code>timeoutSec = 0</code> → never closes by itself.</span></td></tr>
+    <tr><td><code>pararPortalConfiguracao()</code></td><td><code>stopConfigPortal()</code></td><td><span class="pt">Fecha o portal e volta a conectar na rede salva</span><span class="en">Closes the portal and reconnects to the saved network</span></td></tr>
+    <tr><td><code>portalAtivo()</code></td><td><code>isConfigPortalActive()</code></td><td><span class="pt"><code>true</code> enquanto o portal está aberto</span><span class="en"><code>true</code> while the portal is open</span></td></tr>
+    <tr><td><code>definirPortalAutomatico(ativo, nome, senha, falhas)</code></td><td><code>setAutoConfigPortal(on, name, pass, failures)</code></td><td><span class="pt">Abre o portal após N falhas seguidas de WiFi</span><span class="en">Opens the portal after N consecutive WiFi failures</span></td></tr>
+    <tr><td><code>definirPastaPortal("/portal")</code></td><td><code>setPortalFolder("/portal")</code></td><td><span class="pt">Pasta do LittleFS com os arquivos da página</span><span class="en">LittleFS folder holding the page files</span></td></tr>
+    <tr><td><code>registrarCallbackPortalSalvo(cb)</code></td><td><code>onPortalSaved(cb)</code></td><td><span class="pt">Chamado com o SSID quando uma rede é salva</span><span class="en">Called with the SSID when a network is saved</span></td></tr>
+  </table></div>
+  <div class="box info pt"><strong>Comportamentos importantes</strong>
+    <p>• Enquanto o portal está aberto, a biblioteca para de tentar conectar como cliente (trocar de canal derrubaria o celular).</p>
+    <p>• Depois de salvar, o portal espera 1,5 s (para a página receber a resposta), fecha e conecta.</p>
+    <p>• Se as credenciais salvas pelo portal falharem 3 vezes, o portal volta — mesmo sem o modo automático.</p>
+    <p>• O timeout só conta enquanto <strong>ninguém</strong> está conectado ao AP.</p></div>
+  <div class="box info en"><strong>Important behaviour</strong>
+    <p>• While the portal is open, the library stops trying to connect as a station (hopping channels would drop the phone).</p>
+    <p>• After saving, the portal waits 1.5 s (so the page gets the response), closes and connects.</p>
+    <p>• If credentials saved through the portal fail 3 times, the portal comes back — even without auto mode.</p>
+    <p>• The timeout only counts while <strong>nobody</strong> is connected to the AP.</p></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="portal-html">
+  <h2><span class="pt">Personalizando a página do portal</span><span class="en">Customizing the portal page</span></h2>
+  <p class="pt">A página fica em <code>data/portal/index.html</code> e vai para o LittleFS. Copie a página de exemplo de <code>examples/04_PortalWiFi/data/portal/index.html</code> e mude o que quiser: cores, logo, textos, campos. Outros arquivos da pasta (<code>style.css</code>, <code>logo.png</code>, <code>app.js</code>...) são servidos automaticamente. Se não houver <code>index.html</code> no LittleFS, a biblioteca usa uma página embutida igual à de exemplo.</p>
+  <p class="en">The page lives in <code>data/portal/index.html</code> and goes to LittleFS. Copy the example page from <code>examples/04_PortalWiFi/data/portal/index.html</code> and change anything: colours, logo, texts, fields. Other files in the folder (<code>style.css</code>, <code>logo.png</code>, <code>app.js</code>...) are served automatically. If there is no <code>index.html</code> in LittleFS, the library uses a built-in page identical to the example.</p>
+
+  <h3><span class="pt">Contrato HTTP</span><span class="en">HTTP contract</span></h3>
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Rota</span><span class="en">Route</span></th><th><span class="pt">Resposta</span><span class="en">Response</span></th></tr>
+    <tr><td><code>GET /</code></td><td><code>&lt;pasta&gt;/index.html</code> <span class="pt">ou a página embutida</span><span class="en">or the built-in page</span></td></tr>
+    <tr><td><code>GET /scan</code></td><td><code>{"scanning":false,"networks":[{"ssid":"Casa","rssi":-52,"secure":true,"channel":6}]}</code></td></tr>
+    <tr><td><code>GET /scan?refresh=1</code></td><td><span class="pt">Inicia nova varredura (responde <code>"scanning":true</code>; consulte de novo após ~1,5 s)</span><span class="en">Starts a new scan (replies <code>"scanning":true</code>; poll again after ~1.5 s)</span></td></tr>
+    <tr><td><code>POST /save</code></td><td><span class="pt">Campos <code>ssid</code> e <code>password</code> (ou <code>senha</code>) → </span><span class="en">Fields <code>ssid</code> and <code>password</code> (or <code>senha</code>) → </span><code>{"ok":true,"ssid":"..."}</code> / <code>{"ok":false,"erro":"..."}</code></td></tr>
+    <tr><td><code>GET /status</code></td><td><code>{"ap":"Config-Sala","ssid":"Casa","conectado":false,"ip":"","versao":"4.0.0"}</code></td></tr>
+    <tr><td><code>GET /arquivo.ext</code></td><td><span class="pt">Arquivo estático da pasta do portal</span><span class="en">Static file from the portal folder</span></td></tr>
+    <tr><td><span class="pt">qualquer outra</span><span class="en">anything else</span></td><td><span class="pt">Redireciona para <code>/</code> (é o que faz o celular abrir a página)</span><span class="en">Redirects to <code>/</code> (this makes the phone open the page)</span></td></tr>
+  </table></div>
+
+  <h3><span class="pt">Página mínima</span><span class="en">Minimal page</span></h3>
+<div class="code"><span class="tag">html</span><button class="copy" type="button">Copiar</button><pre><code data-lang="html">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;&lt;meta charset="utf-8"&gt;&lt;meta name="viewport" content="width=device-width,initial-scale=1"&gt;&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;WiFi&lt;/h1&gt;
+  &lt;select id="ssid"&gt;&lt;/select&gt;
+  &lt;input id="pass" type="password" placeholder="Senha / Password"&gt;
+  &lt;button onclick="salvar()"&gt;OK&lt;/button&gt;
+  &lt;p id="msg"&gt;&lt;/p&gt;
+&lt;script&gt;
+async function carregar() {
+  const r = await (await fetch('/scan')).json();
+  if (r.scanning) return setTimeout(carregar, 1500);
+  ssid.innerHTML = r.networks.map(n =&gt; `&lt;option&gt;${n.ssid}&lt;/option&gt;`).join('');
+}
+async function salvar() {
+  const body = new URLSearchParams({ ssid: ssid.value, password: pass.value });
+  const r = await (await fetch('/save', { method: 'POST', body })).json();
+  msg.textContent = r.ok ? 'OK!' : r.erro;
+}
+carregar();
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre></div>
+
+  <h3><span class="pt">Campos extras</span><span class="en">Extra fields</span></h3>
+  <p class="pt">Qualquer campo a mais enviado no <code>POST /save</code> (nome com até 15 caracteres) é gravado no Preferences com o <strong>mesmo nome</strong>. Assim, o técnico configura rede, sala, broker... tudo pelo celular.</p>
+  <p class="en">Any extra field sent with <code>POST /save</code> (name up to 15 characters) is stored in Preferences under the <strong>same name</strong>. That way the installer sets network, room, broker... all from a phone.</p>
+<div class="code"><span class="tag">html</span><button class="copy" type="button">Copiar</button><pre><code data-lang="html">&lt;label for="broker"&gt;Broker MQTT&lt;/label&gt;
+&lt;input id="broker" name="broker" placeholder="192.168.0.10"&gt;</code></pre></div>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">String broker = conectividade.lerPreferencia("broker", "192.168.0.10");</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">String broker = connectivity.readPreference("broker", "192.168.0.10");</code></pre></div>
+</div>
+  <p class="pt">Chaves reservadas (ignoradas como campo extra): <code>ssid</code>, <code>password</code>, <code>senha</code>, <code>wifi_ssid</code>, <code>wifi_pass</code>.</p>
+  <p class="en">Reserved keys (ignored as extra fields): <code>ssid</code>, <code>password</code>, <code>senha</code>, <code>wifi_ssid</code>, <code>wifi_pass</code>.</p>
+</section>
+
+<!-- ================================================================ -->
+<section id="preferences">
+  <h2>Preferences (NVS)</h2>
+  <p class="pt">O <strong>Preferences</strong> guarda pares chave → valor na memória não-volátil (NVS) do ESP32. Os dados sobrevivem a desligar, apertar reset e gravar um firmware novo. A biblioteca usa um namespace próprio (<code>"conectividade"</code>) e o abre só durante cada leitura ou escrita — <strong>seu código continua livre</strong> para usar o Preferences com outros namespaces.</p>
+  <p class="en"><strong>Preferences</strong> stores key → value pairs in the ESP32 non-volatile storage (NVS). Data survives power-off, reset and flashing new firmware. The library uses its own namespace (<code>"conectividade"</code>) and only opens it during each read or write — <strong>your code remains free</strong> to use Preferences with other namespaces.</p>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">// Credenciais WiFi (o portal faz isso por você)
+conectividade.salvarCredenciaisWiFi("Casa", "senha1234");   // senha: 8 a 63 caracteres, ou ""
+conectividade.temCredenciaisWiFi();                          // bool
+conectividade.apagarCredenciaisWiFi();                       // "esquecer rede"
+
+// Valores do seu projeto (texto, chave com até 15 caracteres)
+conectividade.salvarPreferencia("intervalo", "30");
+int intervalo = conectividade.lerPreferencia("intervalo", "10").toInt();
+conectividade.apagarPreferencia("intervalo");
+
+// Seu próprio namespace convive normalmente
+Preferences prefs;
+prefs.begin("meuapp", false);
+prefs.putUInt("boots", prefs.getUInt("boots", 0) + 1);
+prefs.end();</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">// WiFi credentials (the portal does it for you)
+connectivity.saveWiFiCredentials("Home", "pass12345");      // password: 8 to 63 chars, or ""
+connectivity.hasWiFiCredentials();                           // bool
+connectivity.clearWiFiCredentials();                         // "forget network"
+
+// Your own values (text, key up to 15 characters)
+connectivity.savePreference("interval", "30");
+int interval = connectivity.readPreference("interval", "10").toInt();
+connectivity.removePreference("interval");
+
+// Your own namespace works side by side
+Preferences prefs;
+prefs.begin("myapp", false);
+prefs.putUInt("boots", prefs.getUInt("boots", 0) + 1);
+prefs.end();</code></pre></div>
+</div>
+  <div class="tbl"><table>
+    <tr><th></th><th>Preferences (NVS)</th><th>LittleFS</th></tr>
+    <tr><td><span class="pt">Guarda</span><span class="en">Stores</span></td><td><span class="pt">Pares chave → valor</span><span class="en">Key → value pairs</span></td><td><span class="pt">Arquivos e pastas</span><span class="en">Files and folders</span></td></tr>
+    <tr><td><span class="pt">Ideal para</span><span class="en">Best for</span></td><td><span class="pt">Senhas, configurações, contadores</span><span class="en">Passwords, settings, counters</span></td><td><span class="pt">HTML, certificados, logs</span><span class="en">HTML, certificates, logs</span></td></tr>
+    <tr><td><span class="pt">Como preencher</span><span class="en">How to fill</span></td><td><span class="pt">Pelo programa ou pelo portal</span><span class="en">From code or the portal</span></td><td><span class="pt">Pasta <code>data/</code> ou pelo programa</span><span class="en"><code>data/</code> folder or from code</span></td></tr>
+  </table></div>
+  <div class="box warn pt"><strong>Cuidado com o desgaste</strong><p>A flash tem um número limitado de gravações. Não grave no Preferences a cada volta do <code>loop()</code>: grave só quando o valor mudar. Mude o namespace com <code>-DCONNECTIVITY_NVS_NAMESPACE=\"outro\"</code>.</p></div>
+  <div class="box warn en"><strong>Mind flash wear</strong><p>Flash has limited write cycles. Do not write to Preferences on every <code>loop()</code> pass: write only when the value changes. Change the namespace with <code>-DCONNECTIVITY_NVS_NAMESPACE=\"other\"</code>.</p></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="mqtt">
+  <h2><span class="pt">Publicar e receber</span><span class="en">Publish &amp; subscribe</span></h2>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">conectividade.publicar(0, "online");                     // pelo índice do array de tópicos
+conectividade.publicar("casa/luz", "on");                // pelo nome do tópico
+conectividade.publicar(1, jsonString);                   // aceita String
+conectividade.publicar(0, "ping", false);                // false = não enfileira se offline
+conectividade.publicarQoS("casa/estado", "1", 0, true);  // retained
+
+// Receber: inscrição automática nos tópicos de ConfigTopicos::receber
+conectividade.registrarCallbackMensagem([](const char* topico, const String&amp; msg) {
+    if (String(topico) == conectividade.topicoRecebimento(0)) {
+        // comando
+    }
+});</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">connectivity.publish(0, "online");                       // by index in the topic array
+connectivity.publish("home/light", "on");                // by topic name
+connectivity.publish(1, jsonString);                     // accepts String
+connectivity.publish(0, "ping", false);                  // false = do not queue while offline
+connectivity.publishQoS("home/state", "1", 0, true);     // retained
+
+// Receive: automatic subscription to TopicsConfig::subscribe topics
+connectivity.onMessage([](const char* topic, const String&amp; msg) {
+    if (String(topic) == connectivity.subscribeTopic(0)) {
+        // command
+    }
+});</code></pre></div>
+</div>
+  <p class="pt">Retorno de <code>publicar()</code>: <code>true</code> = enviada na hora; <code>false</code> = foi para a fila, foi descartada ou deu erro (veja o log).</p>
+  <p class="en"><code>publish()</code> returns <code>true</code> when sent right away; <code>false</code> when queued, dropped or on error (check the log).</p>
+  <div class="box info pt"><strong>QoS</strong><p>O PubSubClient <strong>publica sempre em QoS 0</strong>. O parâmetro <code>qos</code> existe por compatibilidade. As inscrições são feitas com QoS 1.</p></div>
+  <div class="box info en"><strong>QoS</strong><p>PubSubClient <strong>always publishes at QoS 0</strong>. The <code>qos</code> parameter is kept for compatibility. Subscriptions use QoS 1.</p></div>
+
+  <h3><span class="pt">Status com Last Will (LWT)</span><span class="en">Status with Last Will (LWT)</span></h3>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">conectividade.configurarStatus("casa/esp32/status");             // "online" / "offline"
+conectividade.configurarStatus("casa/esp32/status", "1", "0");   // textos personalizados</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">connectivity.setStatusTopic("home/esp32/status");                // "online" / "offline"
+connectivity.setStatusTopic("home/esp32/status", "1", "0");      // custom payloads</code></pre></div>
+</div>
+  <p class="pt">Ao conectar, publica <code>online</code> (retained). Se o ESP32 desligar ou perder a rede, o <strong>broker</strong> publica <code>offline</code> sozinho. Sem <code>configurarStatus()</code>, a biblioteca mantém o comportamento da v3: publica <code>"ESP32 conectado ao MQTT"</code> no tópico 0 ao conectar.</p>
+  <p class="en">On connect it publishes <code>online</code> (retained). If the ESP32 powers off or loses the network, the <strong>broker</strong> publishes <code>offline</code> by itself. Without <code>setStatusTopic()</code>, the library keeps the v3 behaviour: it publishes <code>"ESP32 conectado ao MQTT"</code> on topic 0 when connecting.</p>
+
+  <h3><span class="pt">Tamanho das mensagens</span><span class="en">Message size</span></h3>
+  <p class="pt">O PubSubClient limita cada pacote a 256 bytes (tópico + payload + cabeçalho). Para mensagens maiores, aumente <strong>antes</strong> do <code>begin</code>. Mensagens maiores que o buffer são recusadas com erro no log.</p>
+  <p class="en">PubSubClient limits each packet to 256 bytes (topic + payload + header). For larger messages, increase it <strong>before</strong> <code>begin</code>. Messages larger than the buffer are rejected with an error in the log.</p>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">conectividade.configurarBufferMQTT(1024);</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">connectivity.setMQTTBufferSize(1024);</code></pre></div>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section id="fila">
+  <h2><span class="pt">Fila offline</span><span class="en">Offline queue</span></h2>
+  <p class="pt">Quando você chama <code>publicar()</code> sem conexão, a mensagem vai para uma fila na RAM. Quando o MQTT volta, o <code>update()</code> envia a fila <strong>na ordem</strong> (até 10 mensagens por ciclo, para não travar o loop). Online e com a fila vazia, a mensagem é enviada direto.</p>
+  <p class="en">When you call <code>publish()</code> while disconnected, the message goes into a RAM queue. When MQTT comes back, <code>update()</code> sends the queue <strong>in order</strong> (up to 10 messages per pass, so the loop is not blocked). When online with an empty queue, messages are sent directly.</p>
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Política</span><span class="en">Policy</span></th><th><span class="pt">Comportamento</span><span class="en">Behaviour</span></th><th><span class="pt">Quando usar</span><span class="en">When to use</span></th></tr>
+    <tr><td><code>FILA_COMPLETA</code> / <code>FULL_QUEUE</code> <span class="pt">(padrão)</span><span class="en">(default)</span></td><td><span class="pt">Guarda tudo; cheia → descarta a mais antiga</span><span class="en">Keeps everything; when full → drops the oldest</span></td><td><span class="pt">Eventos, alarmes, logs</span><span class="en">Events, alarms, logs</span></td></tr>
+    <tr><td><code>APENAS_ULTIMO</code> / <code>LATEST_ONLY</code></td><td><span class="pt">Guarda só a última mensagem <strong>de cada tópico</strong></span><span class="en">Keeps only the latest message <strong>per topic</strong></span></td><td><span class="pt">Estado atual (lâmpada, modo)</span><span class="en">Current state (light, mode)</span></td></tr>
+    <tr><td><code>DESCARTAR</code> / <code>DROP</code></td><td><span class="pt">Não guarda nada offline</span><span class="en">Stores nothing while offline</span></td><td><span class="pt">Leituras contínuas</span><span class="en">Continuous readings</span></td></tr>
+  </table></div>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">// Antes do begin():
+conectividade.configurarFila(20, 64, 256);   // slots, bytes por tópico, bytes por payload
+conectividade.definirPoliticaFila(PoliticaFila::APENAS_ULTIMO);
+
+conectividade.mensagensNaFila();             // quantas aguardando (uint16_t)</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">// Before begin():
+connectivity.setQueueSize(20, 64, 256);      // slots, bytes per topic, bytes per payload
+connectivity.setQueuePolicy(QueuePolicy::LATEST_ONLY);
+
+connectivity.queuedMessages();               // how many are waiting (uint16_t)</code></pre></div>
+</div>
+  <h3><span class="pt">Dimensionando</span><span class="en">Sizing</span></h3>
+  <p class="pt"><strong>slots = tempo offline a suportar ÷ intervalo entre mensagens.</strong> Ex.: 10 min com 1 mensagem a cada 30 s → 20 slots. Memória ≈ <code>slots × (tópico + payload)</code>: 20 × (64 + 256) ≈ 6,4 KB.</p>
+  <p class="en"><strong>slots = offline time to survive ÷ interval between messages.</strong> E.g. 10 min at one message every 30 s → 20 slots. Memory ≈ <code>slots × (topic + payload)</code>: 20 × (64 + 256) ≈ 6.4 KB.</p>
+  <div class="box warn pt"><strong>Limites</strong><p>Tópico ou payload maior que o slot é <strong>recusado</strong> com erro (nunca cortado). A fila fica na RAM: se a placa reiniciar offline, ela se perde.</p></div>
+  <div class="box warn en"><strong>Limits</strong><p>A topic or payload larger than the slot is <strong>rejected</strong> with an error (never truncated). The queue lives in RAM: if the board reboots while offline, it is lost.</p></div>
+
+  <h3><span class="pt">PSRAM (ESP32-S3 N16R8 e similares)</span><span class="en">PSRAM (ESP32-S3 N16R8 and similar)</span></h3>
+<div class="code"><span class="tag">ini</span><button class="copy" type="button">Copiar</button><pre><code data-lang="ini">board_build.arduino.memory_type = qio_opi
+board_upload.flash_size = 16MB
+board_build.partitions  = default_16MB.csv
+build_flags =
+    -DBOARD_HAS_PSRAM
+    -DCONNECTIVITY_USAR_PSRAM=1</code></pre></div>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">conectividade.configurarFila(200);   // ~63 KB na PSRAM</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">connectivity.setQueueSize(200);      // ~63 KB in PSRAM</code></pre></div>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section id="aws">
+  <h2>AWS IoT Core</h2>
+  <p class="pt">No AWS IoT Core, cada dispositivo se identifica com um <strong>certificado próprio</strong> (mTLS): o ESP32 confere a AWS com o <em>Amazon Root CA</em> e a AWS confere o ESP32 com o certificado do dispositivo e a chave privada.</p>
+  <p class="en">In AWS IoT Core every device authenticates with <strong>its own certificate</strong> (mTLS): the ESP32 verifies AWS with the <em>Amazon Root CA</em> and AWS verifies the ESP32 with the device certificate and private key.</p>
+  <ol class="steps">
+    <li class="pt"><strong>Policy:</strong> IoT Core → <em>Security → Policies → Create policy</em>. Cole o JSON abaixo, trocando região e número da conta.</li>
+    <li class="en"><strong>Policy:</strong> IoT Core → <em>Security → Policies → Create policy</em>. Paste the JSON below, replacing region and account ID.</li>
+    <li class="pt"><strong>Thing:</strong> <em>All devices → Things → Create things → Create single thing</em>. Dê um nome (ex.: <code>sala-01</code>), escolha <em>Auto-generate a new certificate</em> e anexe a policy.</li>
+    <li class="en"><strong>Thing:</strong> <em>All devices → Things → Create things → Create single thing</em>. Name it (e.g. <code>room-01</code>), choose <em>Auto-generate a new certificate</em> and attach the policy.</li>
+    <li class="pt"><strong>Baixe</strong> o certificado do dispositivo, a chave privada e o <em>Amazon Root CA 1</em>. A chave privada <strong>só pode ser baixada nessa tela</strong>.</li>
+    <li class="en"><strong>Download</strong> the device certificate, the private key and <em>Amazon Root CA 1</em>. The private key <strong>can only be downloaded on that screen</strong>.</li>
+    <li class="pt">Renomeie para <code>device.crt</code>, <code>private.key</code> e <code>AmazonRootCA1.pem</code>, coloque em <code>data/certs/</code> e faça o <em>Upload Filesystem Image</em>.</li>
+    <li class="en">Rename them to <code>device.crt</code>, <code>private.key</code> and <code>AmazonRootCA1.pem</code>, put them in <code>data/certs/</code> and run <em>Upload Filesystem Image</em>.</li>
+    <li class="pt"><strong>Endpoint:</strong> IoT Core → <em>Settings → Device data endpoint</em> (formato <code>xxxx-ats.iot.&lt;região&gt;.amazonaws.com</code>).</li>
+    <li class="en"><strong>Endpoint:</strong> IoT Core → <em>Settings → Device data endpoint</em> (format <code>xxxx-ats.iot.&lt;region&gt;.amazonaws.com</code>).</li>
+    <li class="pt">Teste em <em>Test → MQTT test client</em>, assinando o tópico do dispositivo.</li>
+    <li class="en">Test in <em>Test → MQTT test client</em> by subscribing to the device topic.</li>
+  </ol>
+<div class="code"><span class="tag">json</span><button class="copy" type="button">Copiar</button><pre><code data-lang="json">{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow", "Action": "iot:Connect",
+      "Resource": "arn:aws:iot:REGION:ACCOUNT_ID:client/${iot:Connection.Thing.ThingName}" },
+    { "Effect": "Allow", "Action": ["iot:Publish", "iot:Receive", "iot:RetainPublish"],
+      "Resource": "arn:aws:iot:REGION:ACCOUNT_ID:topic/devices/${iot:Connection.Thing.ThingName}/*" },
+    { "Effect": "Allow", "Action": "iot:Subscribe",
+      "Resource": "arn:aws:iot:REGION:ACCOUNT_ID:topicfilter/devices/${iot:Connection.Thing.ThingName}/*" }
+  ]
+}</code></pre></div>
+  <p class="pt">Com essa policy, cada dispositivo só conecta se o <strong>Client ID for igual ao nome da Thing</strong> e só usa tópicos <code>devices/&lt;thing&gt;/...</code>. O <code>iot:RetainPublish</code> é necessário para o status com Last Will (retained).</p>
+  <p class="en">With this policy each device only connects if its <strong>client ID equals the Thing name</strong>, and only uses <code>devices/&lt;thing&gt;/...</code> topics. <code>iot:RetainPublish</code> is required for the retained Last Will status.</p>
+<div class="pt">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">#include &lt;ConectividadeESP32.h&gt;
+
+#define THING    "sala-01"
+#define ENDPOINT "xxxxxxxxxxxxxx-ats.iot.us-east-1.amazonaws.com"
+
+const char* PUB[] = { "devices/" THING "/telemetria" };
+const char* REC[] = { "devices/" THING "/comando" };
+ConfigTopicos topicos = { PUB, 1, REC, 1 };
+
+void setup() {
+    configurarDebug(DEBUG_INFO);
+    conectividade.configurarStatus("devices/" THING "/status");
+    conectividade.definirPortalAutomatico(true, "Config-" THING);
+
+    conectividade.beginAWS(WIFI_SALVO,
+        { ENDPOINT, 8883, THING,                     // client ID = nome da Thing
+          "/certs/AmazonRootCA1.pem",
+          "/certs/device.crt",
+          "/certs/private.key" },
+        topicos);
+}
+
+void loop() {
+    conectividade.update();
+}</code></pre></div>
+</div>
+<div class="en">
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">#include &lt;ConectividadeESP32.h&gt;
+
+#define THING    "room-01"
+#define ENDPOINT "xxxxxxxxxxxxxx-ats.iot.us-east-1.amazonaws.com"
+
+const char* PUB[] = { "devices/" THING "/telemetry" };
+const char* SUB[] = { "devices/" THING "/command" };
+TopicsConfig topics = { PUB, 1, SUB, 1 };
+
+void setup() {
+    configurarDebug(DEBUG_INFO);
+    connectivity.setStatusTopic("devices/" THING "/status");
+    connectivity.setAutoConfigPortal(true, "Setup-" THING);
+
+    connectivity.beginAWS(SAVED_WIFI,
+        { ENDPOINT, 8883, THING,                     // client ID = Thing name
+          "/certs/AmazonRootCA1.pem",
+          "/certs/device.crt",
+          "/certs/private.key" },
+        topics);
+}
+
+void loop() {
+    connectivity.update();
+}</code></pre></div>
+</div>
+  <div class="box danger pt"><strong>Proteja a chave privada</strong><p>Adicione <code>*.key</code> ao <code>.gitignore</code>. Se a <code>private.key</code> vazar, desative o certificado na AWS e gere outro.</p></div>
+  <div class="box danger en"><strong>Protect the private key</strong><p>Add <code>*.key</code> to <code>.gitignore</code>. If <code>private.key</code> leaks, deactivate the certificate in AWS and issue a new one.</p></div>
+  <p class="pt">Custos: consulte a <a href="https://aws.amazon.com/iot-core/pricing/">página de preços do AWS IoT Core</a> (há cota gratuita para contas novas).</p>
+  <p class="en">Costs: see the <a href="https://aws.amazon.com/iot-core/pricing/">AWS IoT Core pricing page</a> (new accounts get a free tier).</p>
+</section>
+
+<!-- ================================================================ -->
+<section id="api">
+  <h2><span class="pt">Referência completa da API</span><span class="en">Full API reference</span></h2>
+  <p class="pt">Instância global: <code>conectividade</code> ou <code>connectivity</code> — <strong>é o mesmo objeto</strong>. Os nomes em português e inglês chamam o mesmo código e podem ser misturados.</p>
+  <p class="en">Global instance: <code>conectividade</code> or <code>connectivity</code> — <strong>the same object</strong>. Portuguese and English names call the same code and can be mixed.</p>
+
+  <h3><span class="pt">Inicialização e loop</span><span class="en">Setup and loop</span></h3>
+  <div class="tbl"><table>
+    <tr><th>PT</th><th>EN</th><th><span class="pt">Descrição</span><span class="en">Description</span></th></tr>
+    <tr><td><code>beginSomenteWiFi(wifi)</code></td><td><code>beginWiFiOnly(wifi)</code></td><td><span class="pt">Só WiFi</span><span class="en">WiFi only</span></td></tr>
+    <tr><td><code>beginSimples(wifi, mqtt, topicos)</code></td><td><code>beginSimple(wifi, mqtt, topics)</code></td><td><span class="pt">MQTT sem criptografia</span><span class="en">Plain MQTT</span></td></tr>
+    <tr><td><code>beginTLS(wifi, mqtt, tls, topicos)</code></td><td><code>beginTLS(...)</code></td><td><span class="pt">MQTT com TLS</span><span class="en">MQTT over TLS</span></td></tr>
+    <tr><td><code>beginAWS(wifi, aws, topicos)</code></td><td><code>beginAWS(...)</code></td><td>AWS IoT Core (mTLS)</td></tr>
+    <tr><td><code>update()</code></td><td><code>update()</code></td><td><span class="pt">Chame em todo <code>loop()</code></span><span class="en">Call on every <code>loop()</code></span></td></tr>
+    <tr><td><code>definirHostname(nome)</code></td><td><code>setHostname(name)</code></td><td><span class="pt">Nome na rede (antes do begin)</span><span class="en">Network hostname (before begin)</span></td></tr>
+  </table></div>
+
+  <h3><span class="pt">Fila e MQTT (antes do begin)</span><span class="en">Queue and MQTT (before begin)</span></h3>
+  <div class="tbl"><table>
+    <tr><th>PT</th><th>EN</th><th><span class="pt">Descrição</span><span class="en">Description</span></th></tr>
+    <tr><td><code>configurarFila(slots, topicoMax, payloadMax)</code></td><td><code>setQueueSize(slots, topicMax, payloadMax)</code></td><td><span class="pt">Tamanho da fila. Retorna <code>false</code> depois do begin</span><span class="en">Queue size. Returns <code>false</code> after begin</span></td></tr>
+    <tr><td><code>definirPoliticaFila(p)</code> / <code>obterPoliticaFila()</code></td><td><code>setQueuePolicy(p)</code> / <code>getQueuePolicy()</code></td><td><span class="pt">Política da fila (pode mudar a qualquer momento)</span><span class="en">Queue policy (can change any time)</span></td></tr>
+    <tr><td><code>configurarBufferMQTT(bytes)</code></td><td><code>setMQTTBufferSize(bytes)</code></td><td><span class="pt">Tamanho máximo de cada pacote</span><span class="en">Max size of each packet</span></td></tr>
+    <tr><td><code>definirQoSPadrao(qos, retained)</code></td><td><code>setDefaultQoS(qos, retained)</code></td><td><span class="pt">Padrão usado por <code>publicar()</code></span><span class="en">Default used by <code>publish()</code></span></td></tr>
+    <tr><td><code>configurarStatus(topico, online, offline)</code></td><td><code>setStatusTopic(topic, online, offline)</code></td><td><span class="pt">Status com Last Will</span><span class="en">Status with Last Will</span></td></tr>
+  </table></div>
+
+  <h3><span class="pt">Estado e publicação</span><span class="en">State and publishing</span></h3>
+  <div class="tbl"><table>
+    <tr><th>PT</th><th>EN</th><th><span class="pt">Retorno</span><span class="en">Returns</span></th></tr>
+    <tr><td><code>wifiConectado()</code></td><td><code>isWiFiConnected()</code></td><td><code>bool</code></td></tr>
+    <tr><td><code>mqttConectado()</code></td><td><code>isMQTTConnected()</code></td><td><code>bool</code></td></tr>
+    <tr><td><code>mensagensNaFila()</code></td><td><code>queuedMessages()</code></td><td><code>uint16_t</code></td></tr>
+    <tr><td><code>ssidAtual()</code></td><td><code>currentSSID()</code></td><td><code>String</code></td></tr>
+    <tr><td><code>publicar(indice|topico, msg, enfileirar=true)</code></td><td><code>publish(index|topic, msg, queue=true)</code></td><td><span class="pt"><code>bool</code> — <code>true</code> se enviou na hora</span><span class="en"><code>bool</code> — <code>true</code> if sent right away</span></td></tr>
+    <tr><td><code>publicarQoS(topico, msg, qos, retained, enfileirar=true)</code></td><td><code>publishQoS(topic, msg, qos, retained, queue=true)</code></td><td><code>bool</code></td></tr>
+    <tr><td><code>topicoPublicacao(i)</code> / <code>topicoRecebimento(i)</code></td><td><code>publishTopic(i)</code> / <code>subscribeTopic(i)</code></td><td><code>const char*</code> (<code>""</code> <span class="pt">se inválido</span><span class="en">if invalid</span>)</td></tr>
+  </table></div>
+
+  <h3>Callbacks</h3>
+  <div class="tbl"><table>
+    <tr><th>PT</th><th>EN</th><th><span class="pt">Assinatura</span><span class="en">Signature</span></th></tr>
+    <tr><td><code>registrarCallbackMensagem</code></td><td><code>onMessage</code></td><td><code>void(const char* topic, const String& msg)</code></td></tr>
+    <tr><td><code>registrarCallbackWiFiConectado</code></td><td><code>onWiFiConnected</code></td><td><code>void()</code></td></tr>
+    <tr><td><code>registrarCallbackWiFiDesconectado</code></td><td><code>onWiFiDisconnected</code></td><td><code>void()</code></td></tr>
+    <tr><td><code>registrarCallbackMQTTConectado</code></td><td><code>onMQTTConnected</code></td><td><code>void()</code></td></tr>
+    <tr><td><code>registrarCallbackMQTTDesconectado</code></td><td><code>onMQTTDisconnected</code></td><td><code>void()</code></td></tr>
+    <tr><td><code>registrarCallbackPortalSalvo</code></td><td><code>onPortalSaved</code></td><td><code>void(const String& ssid)</code></td></tr>
+  </table></div>
+  <p class="pt">Os callbacks usam <code>std::function</code>: aceitam funções comuns e lambdas, inclusive com captura (<code>[&amp;]</code>).</p>
+  <p class="en">Callbacks use <code>std::function</code>: they accept plain functions and lambdas, including capturing ones (<code>[&amp;]</code>).</p>
+
+  <h3><span class="pt">Preferences, LittleFS e portal</span><span class="en">Preferences, LittleFS and portal</span></h3>
+  <div class="tbl"><table>
+    <tr><th>PT</th><th>EN</th></tr>
+    <tr><td><code>salvarCredenciaisWiFi(ssid, senha)</code></td><td><code>saveWiFiCredentials(ssid, pass)</code></td></tr>
+    <tr><td><code>apagarCredenciaisWiFi()</code></td><td><code>clearWiFiCredentials()</code></td></tr>
+    <tr><td><code>temCredenciaisWiFi()</code></td><td><code>hasWiFiCredentials()</code></td></tr>
+    <tr><td><code>salvarPreferencia(chave, valor)</code></td><td><code>savePreference(key, value)</code></td></tr>
+    <tr><td><code>lerPreferencia(chave, padrao)</code></td><td><code>readPreference(key, default)</code></td></tr>
+    <tr><td><code>apagarPreferencia(chave)</code></td><td><code>removePreference(key)</code></td></tr>
+    <tr><td><code>iniciarLittleFS(formatarSeFalhar=false)</code></td><td><code>beginLittleFS(formatOnFail=false)</code></td></tr>
+    <tr><td><code>lerArquivo(caminho)</code></td><td><code>readFile(path)</code></td></tr>
+    <tr><td><code>iniciarPortalConfiguracao(nome, senha, timeoutSeg)</code></td><td><code>startConfigPortal(name, pass, timeoutSec)</code></td></tr>
+    <tr><td><code>pararPortalConfiguracao()</code></td><td><code>stopConfigPortal()</code></td></tr>
+    <tr><td><code>portalAtivo()</code></td><td><code>isConfigPortalActive()</code></td></tr>
+    <tr><td><code>definirPortalAutomatico(ativo, nome, senha, falhas)</code></td><td><code>setAutoConfigPortal(on, name, pass, failures)</code></td></tr>
+    <tr><td><code>definirPastaPortal(pasta)</code></td><td><code>setPortalFolder(folder)</code></td></tr>
+  </table></div>
+
+  <h3><span class="pt">Tipos, enums e constantes</span><span class="en">Types, enums and constants</span></h3>
+  <div class="tbl"><table>
+    <tr><th>PT</th><th>EN</th></tr>
+    <tr><td><code>ConfigWiFi</code>, <code>ConfigMQTT</code>, <code>ConfigTLS</code>, <code>ConfigAWS</code>, <code>ConfigTopicos</code></td><td><code>WiFiConfig</code>, <code>MQTTConfig</code>, <code>TLSConfig</code>, <code>AWSConfig</code>, <code>TopicsConfig</code></td></tr>
+    <tr><td><code>ModoConexao::SIMPLES</code>, <code>TLS</code>, <code>AWS_IOT</code></td><td><code>ConnectionMode::PLAIN</code>, <code>TLS</code>, <code>AWS</code></td></tr>
+    <tr><td><code>PoliticaFila::FILA_COMPLETA</code>, <code>APENAS_ULTIMO</code>, <code>DESCARTAR</code></td><td><code>QueuePolicy::FULL_QUEUE</code>, <code>LATEST_ONLY</code>, <code>DROP</code></td></tr>
+    <tr><td><code>WIFI_SALVO</code></td><td><code>SAVED_WIFI</code></td></tr>
+    <tr><td><code>CONNECTIVITY_VERSAO</code></td><td><code>CONNECTIVITY_VERSION</code></td></tr>
+  </table></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="build">
+  <h2><span class="pt">Opções de compilação</span><span class="en">Build options</span></h2>
+  <p class="pt">Defina em <code>build_flags</code> no <code>platformio.ini</code>.</p>
+  <p class="en">Set them in <code>build_flags</code> in <code>platformio.ini</code>.</p>
+  <div class="tbl"><table>
+    <tr><th>Define</th><th><span class="pt">Padrão</span><span class="en">Default</span></th><th><span class="pt">Descrição</span><span class="en">Description</span></th></tr>
+    <tr><td><code>CONNECTIVITY_FILA_SLOTS</code></td><td><code>10</code></td><td><span class="pt">Slots padrão da fila</span><span class="en">Default queue slots</span></td></tr>
+    <tr><td><code>CONNECTIVITY_FILA_TOPICO_MAX</code></td><td><code>64</code></td><td><span class="pt">Bytes por tópico</span><span class="en">Bytes per topic</span></td></tr>
+    <tr><td><code>CONNECTIVITY_FILA_PAYLOAD_MAX</code></td><td><code>256</code></td><td><span class="pt">Bytes por payload</span><span class="en">Bytes per payload</span></td></tr>
+    <tr><td><code>CONNECTIVITY_DRENAR_POR_CICLO</code></td><td><code>10</code></td><td><span class="pt">Mensagens da fila enviadas por <code>update()</code></span><span class="en">Queued messages sent per <code>update()</code></span></td></tr>
+    <tr><td><code>CONNECTIVITY_USAR_PSRAM</code></td><td><code>0</code></td><td><span class="pt">Fila na PSRAM</span><span class="en">Queue in PSRAM</span></td></tr>
+    <tr><td><code>CONNECTIVITY_NVS_NAMESPACE</code></td><td><code>"conectividade"</code></td><td><span class="pt">Namespace do Preferences</span><span class="en">Preferences namespace</span></td></tr>
+    <tr><td><code>CONNECTIVITY_PORTAL_PASTA</code></td><td><code>"/portal"</code></td><td><span class="pt">Pasta da página do portal</span><span class="en">Portal page folder</span></td></tr>
+    <tr><td><code>CONNECTIVITY_FALHAS_PARA_PORTAL</code></td><td><code>3</code></td><td><span class="pt">Falhas antes do portal automático</span><span class="en">Failures before the auto portal</span></td></tr>
+  </table></div>
+<div class="code"><span class="tag">ini</span><button class="copy" type="button">Copiar</button><pre><code data-lang="ini">build_flags =
+    -DCONNECTIVITY_FILA_SLOTS=50
+    -DCONNECTIVITY_NVS_NAMESPACE=\"meuapp\"</code></pre></div>
+  <div class="box warn pt"><strong>Não use <code>#define</code> antes do <code>#include</code></strong><p>O código da biblioteca é compilado separadamente e não enxerga um <code>#define</code> do seu <code>main.cpp</code>. Use <code>build_flags</code> ou, para a fila, <code>configurarFila()</code>.</p></div>
+  <div class="box warn en"><strong>Do not <code>#define</code> before <code>#include</code></strong><p>The library sources are compiled separately and cannot see a <code>#define</code> in your <code>main.cpp</code>. Use <code>build_flags</code> or, for the queue, <code>setQueueSize()</code>.</p></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="debug">
+  <h2>Debug</h2>
+  <p class="pt">As mensagens vêm do <a href="https://github.com/professorThiago/DebugManager">DebugManager</a>, com códigos de erro traduzidos e dicas de solução. O Monitor Serial usa 115200 baud.</p>
+  <p class="en">Messages come from <a href="https://github.com/professorThiago/DebugManager">DebugManager</a>, with translated error codes and hints (in Portuguese). The Serial Monitor runs at 115200 baud.</p>
+<div class="code"><span class="tag">cpp</span><button class="copy" type="button">Copiar</button><pre><code data-lang="cpp">configurarDebug(DEBUG_INFO, 4);   // INFO level; GPIO 4 tied to GND at boot → DEBUG_TUDO
+configurarDebug(DEBUG_NENHUM);    // silent (production)</code></pre></div>
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Nível</span><span class="en">Level</span></th><th><span class="pt">Constante</span><span class="en">Constant</span></th><th><span class="pt">Mostra</span><span class="en">Shows</span></th></tr>
+    <tr><td>0</td><td><code>DEBUG_NENHUM</code></td><td><span class="pt">Nada</span><span class="en">Nothing</span></td></tr>
+    <tr><td>1</td><td><code>DEBUG_ERRO</code></td><td><span class="pt">Falhas</span><span class="en">Failures</span></td></tr>
+    <tr><td>2</td><td><code>DEBUG_AVISO</code></td><td><span class="pt">+ Reconexões e timeouts</span><span class="en">+ Reconnects and timeouts</span></td></tr>
+    <tr><td>3</td><td><code>DEBUG_INFO</code></td><td><span class="pt">+ Fluxo normal</span><span class="en">+ Normal flow</span></td></tr>
+    <tr><td>4</td><td><code>DEBUG_VERBOSE</code></td><td><span class="pt">+ Tentativas e estados</span><span class="en">+ Attempts and states</span></td></tr>
+    <tr><td>5</td><td><code>DEBUG_TUDO</code></td><td><span class="pt">+ Payloads</span><span class="en">+ Payloads</span></td></tr>
+  </table></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="exemplos">
+  <h2><span class="pt">Exemplos</span><span class="en">Examples</span></h2>
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Pasta</span><span class="en">Folder</span></th><th><span class="pt">O que mostra</span><span class="en">What it shows</span></th></tr>
+    <tr><td><code>00_Template</code></td><td><span class="pt">Ponto de partida com <code>secrets.h</code> / <code>secrets.cpp</code> e os três modos</span><span class="en">Starting point with <code>secrets.h</code> / <code>secrets.cpp</code> and all three modes</span></td></tr>
+    <tr><td><code>01_WiFiBasico</code></td><td><span class="pt">Só WiFi, não-bloqueante</span><span class="en">WiFi only, non-blocking</span></td></tr>
+    <tr><td><code>02_MQTTBasico</code></td><td><span class="pt">WiFi + MQTT com callbacks e Last Will</span><span class="en">WiFi + MQTT with callbacks and Last Will</span></td></tr>
+    <tr><td><code>03_FilaOffline</code></td><td><span class="pt">Fila e envio ao reconectar</span><span class="en">Queue and delivery on reconnect</span></td></tr>
+    <tr><td><code>04_PortalWiFi</code></td><td><span class="pt">Portal com HTML no LittleFS</span><span class="en">Portal with HTML in LittleFS</span></td></tr>
+    <tr><td><code>05_EnglishAPI_LittleFS</code></td><td><span class="pt">API em inglês + certificados TLS no LittleFS</span><span class="en">English API + TLS certificates in LittleFS</span></td></tr>
+  </table></div>
+</section>
+
+<!-- ================================================================ -->
+<section id="problemas">
+  <h2><span class="pt">Solução de problemas</span><span class="en">Troubleshooting</span></h2>
+
+  <h3><span class="pt">Códigos de status do WiFi</span><span class="en">WiFi status codes</span></h3>
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Código</span><span class="en">Code</span></th><th><span class="pt">Significado</span><span class="en">Meaning</span></th><th><span class="pt">O que fazer</span><span class="en">What to do</span></th></tr>
+    <tr><td><code>1</code> NO_SSID_AVAIL</td><td><span class="pt">Rede não encontrada</span><span class="en">Network not found</span></td><td><span class="pt">Confira o SSID; ESP32 só enxerga 2,4 GHz</span><span class="en">Check the SSID; the ESP32 only sees 2.4 GHz</span></td></tr>
+    <tr><td><code>4</code> CONNECT_FAILED</td><td><span class="pt">Falha ao conectar</span><span class="en">Connection failed</span></td><td><span class="pt">Senha errada</span><span class="en">Wrong password</span></td></tr>
+    <tr><td><code>5</code> CONNECTION_LOST</td><td><span class="pt">Conexão perdida</span><span class="en">Connection lost</span></td><td><span class="pt">Sinal fraco ou roteador reiniciou</span><span class="en">Weak signal or router rebooted</span></td></tr>
+    <tr><td><code>6</code> DISCONNECTED</td><td><span class="pt">Desconectado</span><span class="en">Disconnected</span></td><td><span class="pt">Aguarde a reconexão automática</span><span class="en">Wait for auto-reconnect</span></td></tr>
+  </table></div>
+
+  <h3><span class="pt">Códigos do MQTT (PubSubClient)</span><span class="en">MQTT codes (PubSubClient)</span></h3>
+  <div class="tbl"><table>
+    <tr><th><span class="pt">Código</span><span class="en">Code</span></th><th><span class="pt">Significado</span><span class="en">Meaning</span></th><th><span class="pt">O que fazer</span><span class="en">What to do</span></th></tr>
+    <tr><td><code>-4</code></td><td>TIMEOUT</td><td><span class="pt">Broker não respondeu ao keep-alive</span><span class="en">Broker missed keep-alive</span></td></tr>
+    <tr><td><code>-3</code></td><td>CONNECTION_LOST</td><td><span class="pt">TCP caiu. Na AWS: tópico fora da policy ou client ID duplicado</span><span class="en">TCP dropped. On AWS: topic outside the policy or duplicated client ID</span></td></tr>
+    <tr><td><code>-2</code></td><td>CONNECT_FAILED</td><td><span class="pt">Host, porta, certificado ou endpoint errados</span><span class="en">Wrong host, port, certificate or endpoint</span></td></tr>
+    <tr><td><code>2</code></td><td>BAD_CLIENT_ID</td><td><span class="pt">Troque o client ID</span><span class="en">Change the client ID</span></td></tr>
+    <tr><td><code>4</code></td><td>BAD_CREDENTIALS</td><td><span class="pt">Usuário/senha do broker</span><span class="en">Broker username/password</span></td></tr>
+    <tr><td><code>5</code></td><td>UNAUTHORIZED</td><td><span class="pt">ACL ou certificado sem permissão</span><span class="en">ACL or certificate not authorized</span></td></tr>
+  </table></div>
+
+  <h3><span class="pt">Perguntas frequentes</span><span class="en">FAQ</span></h3>
+  <details><summary><span class="pt">O portal não abre sozinho no celular</span><span class="en">The portal does not pop up on my phone</span></summary>
+    <p class="pt">Abra o navegador e acesse <code>http://192.168.4.1</code>. Se o celular reclamar de "rede sem internet", escolha manter conectado; em alguns aparelhos é preciso desligar os dados móveis.</p>
+    <p class="en">Open the browser and go to <code>http://192.168.4.1</code>. If the phone complains about "no internet", choose to stay connected; some phones require turning mobile data off.</p></details>
+  <details><summary><span class="pt">Mudei o HTML e nada aconteceu</span><span class="en">I changed the HTML and nothing happened</span></summary>
+    <p class="pt">O HTML só chega ao ESP32 com o <em>Upload Filesystem Image</em> (<code>pio run -t uploadfs</code>). Gravar o firmware não envia a pasta <code>data/</code>. Confira também <code>board_build.filesystem = littlefs</code>.</p>
+    <p class="en">The HTML only reaches the ESP32 via <em>Upload Filesystem Image</em> (<code>pio run -t uploadfs</code>). Flashing firmware does not send the <code>data/</code> folder. Also check <code>board_build.filesystem = littlefs</code>.</p></details>
+  <details><summary><span class="pt">"arquivo '/certs/...' nao encontrado"</span><span class="en">"arquivo '/certs/...' nao encontrado" (file not found)</span></summary>
+    <p class="pt">O caminho é relativo à pasta <code>data/</code>: <code>data/certs/ca.pem</code> → <code>"/certs/ca.pem"</code>. Letras maiúsculas e minúsculas contam.</p>
+    <p class="en">The path is relative to the <code>data/</code> folder: <code>data/certs/ca.pem</code> → <code>"/certs/ca.pem"</code>. It is case-sensitive.</p></details>
+  <details><summary><span class="pt">Na AWS conecta e cai em ciclo</span><span class="en">On AWS it connects and drops in a loop</span></summary>
+    <p class="pt">Quase sempre é client ID diferente do nome da Thing (com a policy acima), dois dispositivos com o mesmo client ID ou publicação num tópico que a policy não permite.</p>
+    <p class="en">It is almost always a client ID that differs from the Thing name (with the policy above), two devices sharing a client ID, or publishing to a topic the policy does not allow.</p></details>
+  <details><summary><span class="pt">"Fila: payload com N bytes (max ...)"</span><span class="en">"Fila: payload com N bytes (max ...)" (payload too large)</span></summary>
+    <p class="pt">A mensagem não cabe no slot. Aumente com <code>configurarFila(slots, topicoMax, payloadMax)</code> antes do <code>begin</code>.</p>
+    <p class="en">The message does not fit the slot. Increase it with <code>setQueueSize(slots, topicMax, payloadMax)</code> before <code>begin</code>.</p></details>
+  <details><summary><span class="pt">Como "esquecer" a rede salva?</span><span class="en">How do I "forget" the saved network?</span></summary>
+    <p class="pt">Chame <code>conectividade.apagarCredenciaisWiFi()</code> e reinicie. Com <code>WIFI_SALVO</code>, o portal abre no próximo boot.</p>
+    <p class="en">Call <code>connectivity.clearWiFiCredentials()</code> and reboot. With <code>SAVED_WIFI</code>, the portal opens on the next boot.</p></details>
+</section>
+
+<!-- ================================================================ -->
+<section id="v3">
+  <h2><span class="pt">Migrando da v3</span><span class="en">Migrating from v3</span></h2>
+  <div class="tbl"><table>
+    <tr><th>v3</th><th>v4</th></tr>
+    <tr><td><code>#define CONNECTIVITY_FILA_SLOTS 20</code> <span class="pt">antes do include</span><span class="en">before the include</span></td><td><code>conectividade.configurarFila(20)</code> <span class="pt">ou</span><span class="en">or</span> <code>build_flags</code></td></tr>
+    <tr><td><span class="pt">Certificado colado no código</span><span class="en">Certificate pasted in code</span></td><td><span class="pt">Continua funcionando — ou use <code>"/certs/ca.pem"</code></span><span class="en">Still works — or use <code>"/certs/ca.pem"</code></span></td></tr>
+    <tr><td><code>APENAS_ULTIMO</code> <span class="pt">limpava a fila toda</span><span class="en">cleared the whole queue</span></td><td><span class="pt">Guarda a última mensagem <strong>de cada tópico</strong></span><span class="en">Keeps the latest message <strong>per topic</strong></span></td></tr>
+    <tr><td><span class="pt">Tópico/payload longos eram cortados</span><span class="en">Long topics/payloads were truncated</span></td><td><span class="pt">São recusados com erro</span><span class="en">They are rejected with an error</span></td></tr>
+    <tr><td><code>mensagensNaFila()</code> → <code>uint8_t</code></td><td><code>uint16_t</code></td></tr>
+    <tr><td><span class="pt">Callbacks: ponteiro de função</span><span class="en">Callbacks: function pointer</span></td><td><code>std::function</code> <span class="pt">(compatível)</span><span class="en">(compatible)</span></td></tr>
+  </table></div>
+  <p class="pt">Todos os nomes da v3 continuam valendo. Detalhes no <a href="https://github.com/professorThiago/ConectividadeESP32/blob/main/CHANGELOG.md">CHANGELOG</a>.</p>
+  <p class="en">All v3 names still work. Details in the <a href="https://github.com/professorThiago/ConectividadeESP32/blob/main/CHANGELOG.md">CHANGELOG</a>.</p>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <span class="pt">ConectividadeESP32 — MIT © 2026 <a href="https://github.com/professorThiago">professorThiago</a>. Feito para aulas de IoT.</span>
+  <span class="en">ConectividadeESP32 — MIT © 2026 <a href="https://github.com/professorThiago">professorThiago</a>. Built for IoT classes.</span>
+</footer>
+
+<script>
+// ---------- idioma / language ----------
+(function () {
+  const raiz = document.documentElement;
+  function definir(l) {
+    raiz.dataset.lang = l;
+    raiz.lang = l === 'pt' ? 'pt-BR' : 'en';
+    document.querySelectorAll('.langs button').forEach(b => b.classList.toggle('on', b.dataset.set === l));
+    try { localStorage.setItem('conectividade-lang', l); } catch (e) {}
+    const u = new URL(location.href); u.searchParams.set('lang', l); history.replaceState(null, '', u);
+  }
+  let inicial = new URLSearchParams(location.search).get('lang');
+  if (!inicial) { try { inicial = localStorage.getItem('conectividade-lang'); } catch (e) {} }
+  if (!inicial) inicial = (navigator.language || 'pt').toLowerCase().startsWith('pt') ? 'pt' : 'en';
+  definir(inicial === 'en' ? 'en' : 'pt');
+  document.querySelectorAll('.langs button').forEach(b => b.onclick = () => definir(b.dataset.set));
+})();
+
+// ---------- menu mobile ----------
+const side = document.getElementById('side');
+document.getElementById('menu').onclick = () => side.classList.toggle('aberto');
+side.querySelectorAll('a').forEach(a => a.addEventListener('click', () => side.classList.remove('aberto')));
+
+// ---------- seção ativa no menu ----------
+const links = [...side.querySelectorAll('a')];
+const obs = new IntersectionObserver(ents => {
+  ents.forEach(e => {
+    if (e.isIntersecting) links.forEach(a => a.classList.toggle('ativo', a.getAttribute('href') === '#' + e.target.id));
+  });
+}, { rootMargin: '-40% 0px -55% 0px' });
+document.querySelectorAll('main section[id]').forEach(s => obs.observe(s));
+
+// ---------- destaque de sintaxe / syntax highlight ----------
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const REGRAS = {
+  cpp: [
+    ['c', /\/\/[^\n]*|\/\*[\s\S]*?\*\//y],
+    ['p', /#[a-z]+[^\n]*/y],
+    ['s', /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])'/y],
+    ['n', /\b\d+(?:\.\d+)?(?:UL|U|L)?\b/y],
+    ['k', /\b(?:if|else|for|while|return|const|static|void|true|false|nullptr|auto|struct|class|using|define|include)\b/y],
+    ['t', /\b(?:int|long|float|double|bool|char|uint8_t|uint16_t|uint32_t|int32_t|size_t|String|Preferences|ConfigWiFi|ConfigMQTT|ConfigTLS|ConfigAWS|ConfigTopicos|WiFiConfig|MQTTConfig|TLSConfig|AWSConfig|TopicsConfig|PoliticaFila|QueuePolicy)\b/y],
+    ['f', /\b[A-Za-z_]\w*(?=\s*\()/y],
+  ],
+  ini: [['c', /;[^\n]*/y], ['p', /\[[^\]\n]+\]/y], ['a', /^[\w.]+(?=\s*=)/my], ['s', /\\?"[^"\n]*\\?"/y]],
+  bash: [['c', /#[^\n]*/y], ['f', /\b(?:pio|run)\b/y], ['a', /-\w+/y]],
+  json: [['a', /"(?:\\.|[^"\\])*"(?=\s*:)/y], ['s', /"(?:\\.|[^"\\])*"/y], ['n', /\b\d+\b/y], ['k', /\b(?:true|false|null)\b/y]],
+  html: [['c', /<!--[\s\S]*?-->/y], ['k', /<\/?[a-zA-Z][\w-]*/y], ['a', /\s[\w-]+(?==)/y], ['s', /"[^"]*"/y], ['k', /\/?>/y]],
+  text: [],
+};
+REGRAS.html.push(...REGRAS.cpp.filter(r => r[0] === 'c' || r[0] === 's'));
+function realcar(txt, lang) {
+  const regras = REGRAS[lang] || [];
+  let out = '', i = 0, plano = '';
+  while (i < txt.length) {
+    let achou = false;
+    for (const [cls, re] of regras) {
+      re.lastIndex = i;
+      const m = re.exec(txt);
+      if (m && m.index === i && m[0].length) {
+        out += esc(plano); plano = '';
+        out += `<span class="t-${cls}">${esc(m[0])}</span>`;
+        i += m[0].length; achou = true; break;
+      }
+    }
+    if (!achou) { plano += txt[i]; i++; }
+  }
+  return out + esc(plano);
+}
+document.querySelectorAll('.code').forEach(bloco => {
+  const code = bloco.querySelector('code');
+  const lang = code.dataset.lang;
+  const texto = code.textContent;
+  code.innerHTML = realcar(texto, lang);
+  const b = bloco.querySelector('.copy');
+  b.onclick = async () => {
+    try { await navigator.clipboard.writeText(texto); } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = texto; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e2) {} ta.remove();
+    }
+    const pt = document.documentElement.dataset.lang === 'pt';
+    b.textContent = pt ? 'Copiado!' : 'Copied!';
+    setTimeout(() => b.textContent = pt ? 'Copiar' : 'Copy', 1400);
+  };
+});
+document.querySelectorAll('.langs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.copy').forEach(c => c.textContent = b.dataset.set === 'pt' ? 'Copiar' : 'Copy');
+}));
+document.querySelectorAll('.copy').forEach(c => c.textContent = document.documentElement.dataset.lang === 'pt' ? 'Copiar' : 'Copy');
+</script>
+</body>
+</html>
