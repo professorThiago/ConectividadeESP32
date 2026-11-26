@@ -4,6 +4,7 @@ Biblioteca para ESP32 que cuida de **WiFi e MQTT sem travar o `loop()`**: recone
 
 > Autor: [professorThiago](https://github.com/professorThiago) · Licença MIT
 > Depende de [DebugManager](https://github.com/professorThiago/DebugManager) e PubSubClient (baixados automaticamente pelo PlatformIO).
+> 📖 **Documentação completa / Full documentation:** https://professorthiago.github.io/ConectividadeESP32/
 > 🇺🇸 **English API available** — every function also has an English name. See [English API](#english-api).
 
 ---
