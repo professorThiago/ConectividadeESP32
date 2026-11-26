@@ -17,6 +17,7 @@
     "captive-portal",
     "wifi-manager"
   ],
+  "homepage": "https://professorthiago.github.io/ConectividadeESP32/",
   "repository": {
     "type": "git",
     "url": "https://github.com/professorThiago/ConectividadeESP32.git"
